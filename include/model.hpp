@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <map>
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
@@ -27,6 +28,8 @@ struct Model {
 	vec3 velocity;
 	vec3 pos;
 	Box hitbox;
+	std::map<std::string, BoneInfo> bone_info_map;
+
 	// vec3 front; // follow cam
 
 	static Model init(const std::string& path, bool flip_uv) {
@@ -34,6 +37,7 @@ struct Model {
 
 		uint flags = 0;
 		flags |= aiProcess_Triangulate;
+		// flags |= aiProcess_CalcTangentSpace;
 		if (flip_uv) flags |= aiProcess_FlipUVs;
 
 		Assimp::Importer imp;
@@ -51,7 +55,7 @@ struct Model {
 	void processNode(aiNode* node, const aiScene* scene, const std::string& directory) {
 		for (uint i = 0; i < node->mNumMeshes; i++) {
 			aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
-			this->meshes.push_back(Mesh::init(mesh, scene, this->textures_loaded, directory));
+			this->meshes.push_back(Mesh::init(mesh, scene, this->textures_loaded, bone_info_map, directory));
 		}
 		for (uint i = 0; i < node->mNumChildren; i++) {
 			processNode(node->mChildren[i], scene, directory);

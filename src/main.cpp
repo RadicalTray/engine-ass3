@@ -17,6 +17,8 @@
 
 #include <utils.hpp>
 #include <model.hpp>
+#include <animation.hpp>
+#include <animator.hpp>
 
 namespace chrono = std::chrono;
 
@@ -32,10 +34,10 @@ struct Mouse {
 };
 
 struct UniformBuffer {
-	mat4 projection;
-	mat4 view;
 	mat4 model;
 	mat4 model_it;
+	mat4 view;
+	mat4 projection;
 	vec4 view_pos;
 	vec4 light_pos;
 	vec4 light_clr;
@@ -168,15 +170,22 @@ int main() {
 
 	const uint vao = va[0];
 	const uint ubo = b[0];
+
 	Vertex::setupVAO(vao);
+
+	glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
 	glNamedBufferData(ubo, sizeof(UniformBuffer), &state.ub, GL_DYNAMIC_DRAW);
 
 	// Initialize shaders
-	const uint shader = createShader("./shaders/3d.vert", "./shaders/3d.frag");
-	glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
+	const uint model_shader = createShader("./shaders/model.vert", "./shaders/model.frag");
+	const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model.frag");
 
 	Model model = Model::init("./gordon/scene.gltf", false);
 	model.hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) };
+
+	auto danceAnimation = Animation::init("resources/objects/vampire/dancing_vampire.dae", model.bone_info_map);
+	auto animator = Animator::init(&danceAnimation);
+	assert(animator.bone_matrices.size() <= MAX_BONE_MATRICES);
 
 	Model obj = Model::init("./crate/Old_Crate.fbx", false);
 	obj.hitbox = model.hitbox;
@@ -210,6 +219,7 @@ int main() {
 	obj.pos.z += 2;
 	objs[7] = obj;
 
+	glBindVertexArray(vao);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_DEPTH_TEST);
@@ -259,36 +269,38 @@ int main() {
 			}
 
 			for (usize i = 0; i < objs.size(); i++) {
-				if (model.detectObj(new_pos, objs[i])) {
-					// std::cout << "Collided with " << i << std::endl;
-				}
+				model.detectObj(new_pos, objs[i]);
 			}
 			model.pos = new_pos;
 
-			// std::cout << model.pos.y << std::endl;
+			// animator.updateAnimation(dt);
 		}
 		{ // render
 			glClearColor(0.0f, 0.0f, 0.0f, 1.00f);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-			glUseProgram(shader);
-			glBindVertexArray(vao);
+			glUseProgram(model_anim_shader);
+
+			// const auto transforms = animator.bone_matrices;
+			// glProgramUniformMatrix4fv(shader, 0, transforms.size(), false, glm::value_ptr(transforms[0]));
 
 			state.updateModel(model.pos, vec2(state.view.front.x, state.view.front.z));
 			state.updateUB(model.pos);
 			state.uploadUB(ubo);
-			model.draw(vao, shader);
+			model.draw(vao, model_anim_shader);
 
+			glUseProgram(model_shader);
 			for (auto o : objs) {
 				state.updateModel(o.pos, vec2(0.0f));
-				state.uploadUB(ubo);
-				o.draw(vao, shader);
+				state.uploadModel(ubo);
+				o.draw(vao, model_shader);
 			}
 		}
 		glfwSwapBuffers(window);
 	}
 
-	glDeleteProgram(shader);
+	glDeleteProgram(model_shader);
+	glDeleteProgram(model_anim_shader);
 
 	// TODO: free stuff
 	// glDeleteVertexArrays(, );

@@ -10,7 +10,12 @@
 #include <sstream>
 #include <string>
 
+#include <assimp/matrix4x4.h>
+#include <assimp/quaternion.h>
+#include <assimp/vector3.h>
+
 #define MAX_BONE_INFLUENCE 4
+#define MAX_BONE_MATRICES 128
 
 using glm::mat4, glm::vec2, glm::vec3, glm::vec4, glm::uvec2, glm::ivec2;
 namespace chrono = std::chrono;
@@ -18,6 +23,13 @@ namespace chrono = std::chrono;
 typedef unsigned char uchar;
 typedef uint32_t uint;
 typedef size_t usize;
+
+struct BoneInfo {
+	// in Animator.bone_matrices
+	int id;
+
+	glm::mat4 offset;
+};
 
 struct Vertex {
 	vec3 pos;
@@ -190,18 +202,58 @@ uint createShader(const char *const vert_filename, const char *const frag_filena
 	const std::string vert_src = readFile(vert_filename), frag_src = readFile(frag_filename);
 	const char *vert_src_c = vert_src.data(), *frag_src_c = frag_src.data();
 
+	bool quit = false;
+	int result;
+	int err_msg_len = 0;
+	std::string err_msg;
+
 	uint vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-	glShaderSource(vertex_shader, 1, &vert_src_c, NULL);
+	glShaderSource(vertex_shader, 1, &vert_src_c, nullptr);
 	glCompileShader(vertex_shader);
 
+	glGetShaderiv(vertex_shader, GL_COMPILE_STATUS, &result);
+	glGetShaderiv(vertex_shader, GL_INFO_LOG_LENGTH, &err_msg_len);
+	if (!result){
+		quit = true;
+		err_msg.resize(err_msg_len);
+		glGetShaderInfoLog(vertex_shader, err_msg.size(), nullptr, err_msg.data());
+		std::cerr << "[vertex shader compilation error]" << std::endl
+			  << err_msg
+			  << "---------------------------------" << std::endl;
+	}
+
 	uint fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-	glShaderSource(fragment_shader, 1, &frag_src_c, NULL);
+	glShaderSource(fragment_shader, 1, &frag_src_c, nullptr);
 	glCompileShader(fragment_shader);
+
+	glGetShaderiv(fragment_shader, GL_COMPILE_STATUS, &result);
+	glGetShaderiv(fragment_shader, GL_INFO_LOG_LENGTH, &err_msg_len);
+	if (!result){
+		quit = true;
+		err_msg.resize(err_msg_len);
+		glGetShaderInfoLog(fragment_shader, err_msg.size(), nullptr, err_msg.data());
+		std::cerr << "[fragment shader compilation error]" << std::endl
+			  << err_msg
+			  << "-----------------------------------" << std::endl;
+	}
 
 	uint shader = glCreateProgram();
 	glAttachShader(shader, vertex_shader);
 	glAttachShader(shader, fragment_shader);
 	glLinkProgram(shader);
+
+	glGetProgramiv(shader, GL_LINK_STATUS, &result);
+	glGetProgramiv(shader, GL_INFO_LOG_LENGTH, &err_msg_len);
+	if (!result) {
+		quit = true;
+		err_msg.resize(err_msg_len);
+		glGetProgramInfoLog(shader, err_msg.size(), nullptr, err_msg.data());
+		std::cerr << "[shader program linking error]" << std::endl
+			  << err_msg
+			  << "------------------------------" << std::endl;
+	}
+
+	if (quit) exit(1);
 
 	glDeleteShader(vertex_shader);
 	glDeleteShader(fragment_shader);
@@ -216,4 +268,21 @@ std::string readFile(const char *const filepath) {
 	stream << file.rdbuf();
 	file.close();
 	return stream.str();
+}
+
+glm::mat4 glmFromAssimpMat4(const aiMatrix4x4& src) {
+	glm::mat4 m;
+	m[0][0] = src.a1; m[1][0] = src.a2; m[2][0] = src.a3; m[3][0] = src.a4;
+	m[0][1] = src.b1; m[1][1] = src.b2; m[2][1] = src.b3; m[3][1] = src.b4;
+	m[0][2] = src.c1; m[1][2] = src.c2; m[2][2] = src.c3; m[3][2] = src.c4;
+	m[0][3] = src.d1; m[1][3] = src.d2; m[2][3] = src.d3; m[3][3] = src.d4;
+	return m;
+}
+
+glm::vec3 glmFromAssimpVec3(const aiVector3D& src) {
+	return glm::vec3(src.x, src.y, src.z);
+}
+
+glm::quat glmFromAssimpQuat(const aiQuaternion& src) {
+	return glm::quat(src.w, src.x, src.y, src.z);
 }

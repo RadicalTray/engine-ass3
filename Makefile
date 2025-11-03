@@ -4,7 +4,7 @@ BUILD_DIR := ./build
 SRC_DIRS := ./src ./glad/src
 INC_DIRS := ./include ./glad/include
 LIBS := glfw3 assimp
-FLAGS := -Og -Wall
+FLAGS := -Og -Wall -std=c++20 # c++20 for map.contains(key) ._.
 
 ifdef out
 INSTALL_PREFIX := $(out)

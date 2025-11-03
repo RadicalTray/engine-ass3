@@ -1,5 +1,4 @@
 #version 430
-#define MAX_BONE_INFLUENCE 4
 
 in VS_OUT {
 	vec3 FragPos;
@@ -10,10 +9,10 @@ in VS_OUT {
 layout(location = 0) out vec4 FragColor;
 
 layout(binding = 0) uniform UniformBuffer {
-	mat4 projection;
-	mat4 view;
 	mat4 model;
 	mat4 model_IT;
+	mat4 view;
+	mat4 projection;
 	vec4 viewPos;
 	vec4 lightPos;
 	vec4 lightClr;

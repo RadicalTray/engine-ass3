@@ -1,13 +1,14 @@
 #pragma once
+#include <string>
+#include <limits>
+#include <vector>
+
 #include <glad/gl.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <assimp/scene.h>
-
-#include <string>
-#include <vector>
 
 #include <utils.hpp>
 
@@ -39,10 +40,12 @@ struct Mesh {
 	uint ebo;
 
 	// PERF: possibly realloc a lot, try reserve
-	static Mesh init(aiMesh *mesh, const aiScene *scene, std::vector<TextureInfo>& textures_loaded, const std::string& directory) {
+	static Mesh init(aiMesh *mesh, const aiScene *scene, std::vector<TextureInfo>& textures_loaded, std::map<std::string, BoneInfo>& bone_info_map, const std::string& directory) {
 		std::vector<Vertex> vertices;
 		for (uint i = 0; i < mesh->mNumVertices; i++) {
 			Vertex vertex = {};
+			vertex.bone_ids.fill(-1);
+			vertex.weights.fill(0);
 
 			vertex.pos = vec3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
 
@@ -76,6 +79,35 @@ struct Mesh {
 		loadMaterialTextures(textures, textures_loaded, material, aiTextureType_SPECULAR, directory);
 		loadMaterialTextures(textures, textures_loaded, material, aiTextureType_NORMALS, directory);
 		loadMaterialTextures(textures, textures_loaded, material, aiTextureType_HEIGHT, directory);
+
+		for (uint bone_index = 0; bone_index < mesh->mNumBones; bone_index++) {
+			// bone_id is guaranteed to be initialized. if only c++ had a return block ._.
+			int bone_id;
+			std::string bone_name = mesh->mBones[bone_index]->mName.C_Str();
+			if (bone_info_map.contains(bone_name)) {
+				bone_id = bone_info_map[bone_name].id;
+			} else {
+				bone_id = bone_info_map.size();
+				bone_info_map[bone_name] = {
+					.id = bone_id,
+					.offset = glmFromAssimpMat4(mesh->mBones[bone_index]->mOffsetMatrix),
+				};
+			}
+
+			auto weights = mesh->mBones[bone_index]->mWeights;
+			auto num_weights = mesh->mBones[bone_index]->mNumWeights;
+			for (uint weight_index = 0; weight_index < num_weights; weight_index++) {
+				uint vertex_id = weights[weight_index].mVertexId;
+				assert(vertex_id <= vertices.size());
+				for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
+					if (vertices[vertex_id].bone_ids[i] < 0) {
+						vertices[vertex_id].bone_ids[i] = bone_id;
+						vertices[vertex_id].weights[i] = weights[weight_index].mWeight;
+						break;
+					}
+				}
+			}
+		}
 
 		uint b[2];
 		glCreateBuffers(2, b);
@@ -121,7 +153,7 @@ struct Mesh {
 				break;
 			}
 			glBindTextureUnit(i, this->textures[i].id);
-			glUniform1i(loc, i);
+			glProgramUniform1i(shader, loc, i);
 		}
 
 		glVertexArrayVertexBuffer(vao, 0, this->vbo, 0, sizeof(Vertex));

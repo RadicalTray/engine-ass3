@@ -1,6 +1,8 @@
 #version 430
+#define MAX_BONE_MATRICES 128
 #define MAX_BONE_INFLUENCE 4
 
+// TODO: take boneIDs and weights out of model.vert
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in vec2 aTexCoord;
@@ -15,11 +17,11 @@ out VS_OUT {
 	vec2 TexCoord;
 } vsOut;
 
-layout (binding = 0) uniform UniformBuffer {
-	mat4 projection;
-	mat4 view;
+layout(binding = 0) uniform UniformBuffer {
 	mat4 model;
 	mat4 model_IT;
+	mat4 view;
+	mat4 projection;
 	vec4 viewPos;
 	vec4 lightPos;
 	vec4 lightClr;
@@ -34,7 +36,7 @@ void main() {
 	vec2 texCoord = aTexCoord;
 
 	gl_Position = pos;
-	vsOut.FragPos = fragPos.xyz;
+	vsOut.FragPos = fragPos.xyz / fragPos.w;
 	vsOut.Normal = mat3(model_IT) * normal;
 	vsOut.TexCoord = texCoord;
 }
