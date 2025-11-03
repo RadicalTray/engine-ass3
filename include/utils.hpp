@@ -116,29 +116,29 @@ debugMessageCallback(
 	// WARN: assuming message is always NUL terminated. (can be checked with `length`)
 	std::string source_str, type_str, severity_str;
 	switch (source) {
-		case GL_DEBUG_SOURCE_API:		source_str = "api"; break;
-		case GL_DEBUG_SOURCE_WINDOW_SYSTEM:	source_str = "window system"; break;
-		case GL_DEBUG_SOURCE_SHADER_COMPILER:	source_str = "shader compiler"; break;
-		case GL_DEBUG_SOURCE_THIRD_PARTY:	source_str = "third party"; break;
-		case GL_DEBUG_SOURCE_APPLICATION:	source_str = "application"; break;
-		case GL_DEBUG_SOURCE_OTHER:		source_str = "other"; break;
+	case GL_DEBUG_SOURCE_API:             source_str = "api"; break;
+	case GL_DEBUG_SOURCE_WINDOW_SYSTEM:   source_str = "window system"; break;
+	case GL_DEBUG_SOURCE_SHADER_COMPILER: source_str = "shader compiler"; break;
+	case GL_DEBUG_SOURCE_THIRD_PARTY:     source_str = "third party"; break;
+	case GL_DEBUG_SOURCE_APPLICATION:     source_str = "application"; break;
+	case GL_DEBUG_SOURCE_OTHER:           source_str = "other"; break;
 	}
 	switch (type) {
-		case GL_DEBUG_TYPE_ERROR:			type_str = "error"; break;
-		case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:		type_str = "deprecated"; break;
-		case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:		type_str = "undefined"; break; 
-		case GL_DEBUG_TYPE_PORTABILITY:			type_str = "portability"; break;
-		case GL_DEBUG_TYPE_PERFORMANCE:			type_str = "performance"; break;
-		case GL_DEBUG_TYPE_MARKER:			type_str = "marker"; break;
-		case GL_DEBUG_TYPE_PUSH_GROUP:			type_str = "push group"; break;
-		case GL_DEBUG_TYPE_POP_GROUP:			type_str = "pop group"; break;
-		case GL_DEBUG_TYPE_OTHER:			type_str = "other"; break;
+	case GL_DEBUG_TYPE_ERROR:               type_str = "error"; break;
+	case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: type_str = "deprecated"; break;
+	case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:  type_str = "undefined"; break; 
+	case GL_DEBUG_TYPE_PORTABILITY:         type_str = "portability"; break;
+	case GL_DEBUG_TYPE_PERFORMANCE:         type_str = "performance"; break;
+	case GL_DEBUG_TYPE_MARKER:              type_str = "marker"; break;
+	case GL_DEBUG_TYPE_PUSH_GROUP:          type_str = "push group"; break;
+	case GL_DEBUG_TYPE_POP_GROUP:           type_str = "pop group"; break;
+	case GL_DEBUG_TYPE_OTHER:               type_str = "other"; break;
 	}
 	switch (severity) {
-		case GL_DEBUG_SEVERITY_HIGH:		severity_str = "high"; break;
-		case GL_DEBUG_SEVERITY_MEDIUM:		severity_str = "medium"; break;
-		case GL_DEBUG_SEVERITY_LOW:		severity_str = "low"; break;
-		case GL_DEBUG_SEVERITY_NOTIFICATION:	severity_str = "notification"; break;
+	case GL_DEBUG_SEVERITY_HIGH:         severity_str = "high"; break;
+	case GL_DEBUG_SEVERITY_MEDIUM:       severity_str = "medium"; break;
+	case GL_DEBUG_SEVERITY_LOW:          severity_str = "low"; break;
+	case GL_DEBUG_SEVERITY_NOTIFICATION: severity_str = "notification"; break;
 	}
 	// std::cerr << "GL(" << type_str << ", " << source_str << ", " << severity_str << ", " << id << "): " << message << std::endl;
 	std::cerr << "GL(" << type_str << "): " << message << std::endl;
