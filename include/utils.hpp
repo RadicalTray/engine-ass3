@@ -62,7 +62,7 @@ struct Vertex {
 		glVertexArrayAttribBinding(vao, 4, 0);
 
 		glEnableVertexArrayAttrib(vao,  5);
-		glVertexArrayAttribFormat(vao,  5, MAX_BONE_INFLUENCE, GL_INT, GL_FALSE, offsetof(Vertex, bone_ids));
+		glVertexArrayAttribIFormat(vao,  5, MAX_BONE_INFLUENCE, GL_INT, offsetof(Vertex, bone_ids));
 		glVertexArrayAttribBinding(vao, 5, 0);
 
 		glEnableVertexArrayAttrib(vao,  6);

@@ -95,12 +95,12 @@ struct Mesh {
 			}
 
 			auto weights = mesh->mBones[bone_index]->mWeights;
-			auto num_weights = mesh->mBones[bone_index]->mNumWeights;
-			for (uint weight_index = 0; weight_index < num_weights; weight_index++) {
+			for (uint weight_index = 0; weight_index < mesh->mBones[bone_index]->mNumWeights; weight_index++) {
 				uint vertex_id = weights[weight_index].mVertexId;
 				assert(vertex_id <= vertices.size());
 				for (int i = 0; i < MAX_BONE_INFLUENCE; ++i) {
 					if (vertices[vertex_id].bone_ids[i] < 0) {
+						assert(bone_id < MAX_BONE_MATRICES);
 						vertices[vertex_id].bone_ids[i] = bone_id;
 						vertices[vertex_id].weights[i] = weights[weight_index].mWeight;
 						break;

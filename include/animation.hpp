@@ -36,7 +36,7 @@ struct Animation {
 	std::vector<Bone> bones;
 	std::map<std::string, BoneInfo>& bone_info_map;
 	float duration;
-	int ticks_per_sec;
+	float ticks_per_sec;
 	AssimpNode root_node;
 
 	static Animation init(const std::string& filepath, std::map<std::string, BoneInfo>& bone_info_map) {
@@ -61,7 +61,7 @@ struct Animation {
 			// don't need to set offset cuz not used ig
 			if (!bone_info_map.contains(bone_name)) {
 				int id = bone_info_map.size();
-				bone_info_map[bone_name].id = id;
+				bone_info_map[bone_name] = { .id = id };
 			}
 
 			bones.push_back(Bone::init(bone_name, bone_info_map[bone_name].id, channel));
@@ -71,7 +71,7 @@ struct Animation {
 			.bones = bones,
 			.bone_info_map = bone_info_map,
 			.duration = (float)anim->mDuration,
-			.ticks_per_sec = (int)anim->mTicksPerSecond,
+			.ticks_per_sec = (float)anim->mTicksPerSecond,
 			.root_node = AssimpNode::init(scene->mRootNode),
 		};
 	}

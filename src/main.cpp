@@ -91,15 +91,15 @@ struct State {
 			.speed = 0.004f,
 		};
 		state.ub = {
-			.light_pos = vec4(1.2f, 10.0f, 2.0f, 0.5f),
+			.light_pos = vec4(1.2f, 10.0f, 2.0f, 0.2f),
 			.light_clr = vec4(1.0f),
 			.ambient_clr = vec4(1.0f),
-			.ambient_str = 0.1f,
+			.ambient_str = 0.5f,
 		};
 		glfwGetWindowSize(window, &state.scr_res.x, &state.scr_res.y);
 		glfwGetCursorPos(window, &state.mouse.last_xpos, &state.mouse.last_ypos);
 		state.updateUB(vec3(0.0f));
-		state.updateModel(vec3(0.0f), vec2(0.0f));
+		state.updateModel(vec3(0.0f), vec3(1.0f), vec2(0.0f));
 		return state;
 	}
 
@@ -123,7 +123,7 @@ struct State {
 		glNamedBufferSubData(ubo, 0, sizeof(UniformBuffer), &this->ub);
 	}
 
-	void updateModel(vec3 pos, vec2 front) {
+	void updateModel(vec3 pos, vec3 scale, vec2 front) {
 		const vec3 up = vec3(0.0f, 1.0f, 0.0f);
 
 		// xz
@@ -132,7 +132,7 @@ struct State {
 		float angle = std::atan2(u.x*v.x + u.y*v.y, u.x*v.y - u.y*v.x);
 
 		mat4 model(1.0f);
-		model = glm::scale    (model, vec3(1.0f, 1.0f, 1.0f));
+		model = glm::scale    (model, scale);
 		model = glm::translate(model, pos);
 		model = glm::rotate   (model, angle, up);
 
@@ -178,12 +178,15 @@ int main() {
 
 	// Initialize shaders
 	const uint model_shader = createShader("./shaders/model.vert", "./shaders/model.frag");
-	const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model.frag");
+	const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model_plain.frag");
+	int model_anim_shader_bone_matrices = glGetUniformLocation(model_anim_shader, "boneMatrices");
 
-	Model model = Model::init("./gordon/scene.gltf", false);
+	// Model model = Model::init("./vampire/dancing_vampire.dae", false);
+	Model model = Model::init("./Dancing Twerk.dae", false);
 	model.hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) };
 
-	auto danceAnimation = Animation::init("resources/objects/vampire/dancing_vampire.dae", model.bone_info_map);
+	// auto danceAnimation = Animation::init("./vampire/dancing_vampire.dae", model.bone_info_map);
+	auto danceAnimation = Animation::init("./Dancing Twerk.dae", model.bone_info_map);
 	auto animator = Animator::init(&danceAnimation);
 	assert(animator.bone_matrices.size() <= MAX_BONE_MATRICES);
 
@@ -193,7 +196,7 @@ int main() {
 	obj.hitbox.max.z += 0.4f;
 
 	std::vector<Model> objs(8);
-	obj.pos.x += 1;
+	obj.pos.x += 10;
 	objs[0] = obj;
 	obj.pos.x += 1;
 	obj.pos.z += 1;
@@ -228,35 +231,35 @@ int main() {
 	auto start = chrono::steady_clock::now();
 	while (!glfwWindowShouldClose(window)) {
 		auto now = chrono::steady_clock::now();
-		state.dt = chrono::duration_cast<chrono::milliseconds>(now - start).count();
+		state.dt = chrono::duration_cast<chrono::microseconds>(now - start).count();
 		start = now;
 
 		{ // process
 			glfwPollEvents();
-			const float dt = state.dt;
+			const float dt_ms = state.dt/1000.0f;
 
 			// Floating cam
-			// if (state.keys.w) state.view.pos += state.view.front * state.view.speed * dt;
-			// if (state.keys.s) state.view.pos -= state.view.front * state.view.speed * dt;
-			// if (state.keys.a) state.view.pos -= glm::normalize(glm::cross(state.view.front, state.view.up)) * state.view.speed * dt;
-			// if (state.keys.d) state.view.pos += glm::normalize(glm::cross(state.view.front, state.view.up)) * state.view.speed * dt;
-			// if (state.keys.space) state.view.pos += state.view.up * state.view.speed * dt;
-			// if (state.keys.shift) state.view.pos -= state.view.up * state.view.speed * dt;
+			// if (state.keys.w) state.view.pos += state.view.front * state.view.speed * dt_ms;
+			// if (state.keys.s) state.view.pos -= state.view.front * state.view.speed * dt_ms;
+			// if (state.keys.a) state.view.pos -= glm::normalize(glm::cross(state.view.front, state.view.up)) * state.view.speed * dt_ms;
+			// if (state.keys.d) state.view.pos += glm::normalize(glm::cross(state.view.front, state.view.up)) * state.view.speed * dt_ms;
+			// if (state.keys.space) state.view.pos += state.view.up * state.view.speed * dt_ms;
+			// if (state.keys.shift) state.view.pos -= state.view.up * state.view.speed * dt_ms;
 
-			vec3 move_front = state.view.front * state.view.speed * dt;
+			vec3 move_front = state.view.front * state.view.speed * dt_ms;
 			move_front.y = 0.0f;
-			vec3 move_side = glm::normalize(glm::cross(state.view.front, state.view.up)) * state.view.speed * dt;
+			vec3 move_side = glm::normalize(glm::cross(state.view.front, state.view.up)) * state.view.speed * dt_ms;
 			vec3 move_vert = state.view.up * 0.01f;
 
 			model.velocity.x = 0;
-			model.velocity.y -= gravity * dt;
+			model.velocity.y -= gravity * dt_ms;
 			model.velocity.z = 0;
 
 			if (state.keys.w)     model.velocity   += move_front;
 			if (state.keys.s)     model.velocity   -= move_front;
 			if (state.keys.a)     model.velocity   -= move_side;
 			if (state.keys.d)     model.velocity   += move_side;
-			if (state.keys.space) model.velocity.y += 1.35f*gravity*dt;
+			if (state.keys.space) model.velocity.y += 1.35f*gravity*dt_ms;
 			// if (state.keys.shift) model.velocity -= move_vert;
 
 			vec3 new_pos = model.pos + model.velocity;
@@ -273,7 +276,7 @@ int main() {
 			}
 			model.pos = new_pos;
 
-			// animator.updateAnimation(dt);
+			animator.updateAnimation(state.dt/1000000.0f);
 		}
 		{ // render
 			glClearColor(0.0f, 0.0f, 0.0f, 1.00f);
@@ -281,17 +284,17 @@ int main() {
 
 			glUseProgram(model_anim_shader);
 
-			// const auto transforms = animator.bone_matrices;
-			// glProgramUniformMatrix4fv(shader, 0, transforms.size(), false, glm::value_ptr(transforms[0]));
+			const auto& transforms = animator.bone_matrices;
+			glProgramUniformMatrix4fv(model_anim_shader, model_anim_shader_bone_matrices, transforms.size(), false, glm::value_ptr(transforms[0]));
 
-			state.updateModel(model.pos, vec2(state.view.front.x, state.view.front.z));
+			state.updateModel(model.pos, vec3(1.0f), vec2(state.view.front.x, state.view.front.z));
 			state.updateUB(model.pos);
 			state.uploadUB(ubo);
 			model.draw(vao, model_anim_shader);
 
 			glUseProgram(model_shader);
 			for (auto o : objs) {
-				state.updateModel(o.pos, vec2(0.0f));
+				state.updateModel(o.pos, vec3(1.0f), vec2(0.0f));
 				state.uploadModel(ubo);
 				o.draw(vao, model_shader);
 			}

@@ -12,7 +12,7 @@
 
 #include <utils.hpp>
 
-float getFactor(float last_timestamp, float next_timestamp, float dt);
+float getFactor(float last, float next, float x);
 
 struct KeyPosition {
 	glm::vec3 pos;
@@ -75,66 +75,68 @@ struct Bone {
 		};
 	}
 	
-	void update(float dt) {
-		this->local_transform = interpolatePos(dt) * interpolateRot(dt) * interpolateScale(dt);
+	void update(float t) {
+		this->local_transform = interpolatePos(t) * interpolateRot(t) * interpolateScale(t);
 	}
 
-	glm::mat4 interpolatePos(float dt) const {
+	glm::mat4 interpolatePos(float t) const {
 		if (this->positions.size() == 1) {
 			return glm::translate(glm::mat4(1.0f), this->positions[0].pos);
 		}
 
-		usize idx = this->getPosIdx(dt);
-		float factor = getFactor(this->positions[idx].timestamp, this->positions[idx + 1].timestamp, dt);
-		glm::vec3 finalPosition = glm::mix(this->positions[idx].pos, this->positions[idx + 1].pos, factor);
-		return glm::translate(glm::mat4(1.0f), finalPosition);
+		usize idx = this->getPosIdx(t);
+		usize next_idx = idx + 1;
+		float factor = getFactor(this->positions[idx].timestamp, this->positions[next_idx].timestamp, t);
+		glm::vec3 final_pos = glm::mix(this->positions[idx].pos, this->positions[next_idx].pos, factor);
+		return glm::translate(glm::mat4(1.0f), final_pos);
 	}
 
-	glm::mat4 interpolateRot(float dt) const {
+	glm::mat4 interpolateRot(float t) const {
 		if (this->rotations.size() == 1) {
 			return glm::toMat4(glm::normalize(this->rotations[0].rot));
 		}
 
-		usize idx = this->getRotIdx(dt);
-		float factor = getFactor(this->rotations[idx].timestamp, this->rotations[idx + 1].timestamp, dt);
-		glm::quat finalRotation = glm::normalize(glm::slerp(this->rotations[idx].rot, this->rotations[idx + 1].rot, factor));
-		return glm::toMat4(finalRotation);
+		usize idx = this->getRotIdx(t);
+		usize next_idx = idx + 1;
+		float factor = getFactor(this->rotations[idx].timestamp, this->rotations[next_idx].timestamp, t);
+		glm::quat final_rot = glm::normalize(glm::slerp(this->rotations[idx].rot, this->rotations[next_idx].rot, factor));
+		return glm::toMat4(final_rot);
 
 	}
 
-	glm::mat4 interpolateScale(float dt) const {
+	glm::mat4 interpolateScale(float t) const {
 		if (this->scales.size() == 1) {
 			return glm::scale(glm::mat4(1.0f), this->scales[0].scale);
 		}
 
-		usize idx = this->getScaleIdx(dt);
-		float factor = getFactor(this->scales[idx].timestamp, this->scales[idx + 1].timestamp, dt);
-		glm::vec3 finalScale = glm::mix(this->scales[idx].scale, this->scales[idx + 1].scale, factor);
-		return glm::scale(glm::mat4(1.0f), finalScale);
+		usize idx = this->getScaleIdx(t);
+		usize next_idx = idx + 1;
+		float factor = getFactor(this->scales[idx].timestamp, this->scales[next_idx].timestamp, t);
+		glm::vec3 final_scale = glm::mix(this->scales[idx].scale, this->scales[next_idx].scale, factor);
+		return glm::scale(glm::mat4(1.0f), final_scale);
 	}
 
-	// Why do these all skip i=0 ???
-	usize getPosIdx(float dt) const {
-		for (usize i = 1; i < this->positions.size(); i++) {
-			if (dt < this->positions[i].timestamp) {
+	usize getPosIdx(float t) const {
+		for (usize i = 0; i < this->positions.size() - 1; i++) {
+			if (t < this->positions[i + 1].timestamp) {
 				return i;
 			}
 		}
 		assert(0);
 	}
 
-	int getRotIdx(float dt) const {
-		for (usize i = 1; i < this->rotations.size(); i++) {
-			if (dt < this->rotations[i].timestamp) {
+	int getRotIdx(float t) const {
+		for (usize i = 0; i < this->rotations.size() - 1; i++) {
+			if (t < this->rotations[i + 1].timestamp) {
 				return i;
 			}
 		}
 		assert(0);
 	}
 
-	int getScaleIdx(float dt) const {
-		for (usize i = 1; i < this->scales.size(); i++) {
-			if (dt < this->scales[i].timestamp) {
+	int getScaleIdx(float t) const {
+		for (usize i = 0; i < this->scales.size() - 1; i++) {
+			if (t < this->scales[i + 1].timestamp) {
 				return i;
 			}
 		}
@@ -142,6 +144,6 @@ struct Bone {
 	}
 };
 
-float getFactor(float last_timestamp, float next_timestamp, float dt) {
-	return (dt - last_timestamp) / (next_timestamp - last_timestamp);
+float getFactor(float last, float next, float x) {
+	return (x - last) / (next - last);
 }

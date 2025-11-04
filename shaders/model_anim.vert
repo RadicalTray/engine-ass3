@@ -26,7 +26,6 @@ layout(binding = 0) uniform UniformBuffer {
 	vec4 lightClr;
 	vec4 ambientClr;
 	float ambientStr;
-
 };
 uniform mat4 boneMatrices[MAX_BONE_MATRICES];
 
@@ -34,23 +33,23 @@ void main() {
 	vec4 totalPos = vec4(0.0f);
 	for (int i = 0; i < MAX_BONE_INFLUENCE; i++) {
 		// NOTE: this should be unreachable
-		if (aBoneIDs[i] == -1) {
-			continue;
-		}
-		// NOTE: this can also be made unreachable i think
-		if (aBoneIDs[i] >= MAX_BONE_MATRICES) {
-			totalPos = vec4(aPos, 1.0f);
-			break;
-		}
+		// if (aBoneIDs[i] < 0) {
+		// 	continue;
+		// }
+		// NOTE: aBoneIDs WILL ALWAYS SUCCEED in comparing??? WHAT, except < 0 tho that didn't go in
+		// if (aBoneIDs[i] > 20000) {
+		// 	totalPos = vec4(aPos, 1.0f);
+		// 	break;
+		// }
 
-		vec4 localPosition = boneMatrices[aBoneIDs[i]] * vec4(aPos, 1.0f);
-		totalPos += localPosition * aWeights[i];
+		totalPos += aWeights[i] * boneMatrices[aBoneIDs[i]] * vec4(aPos, 1.0f);
 
 		// TODO: calculate normal
-		vec3 localNormal = mat3(boneMatrices[aBoneIDs[i]]) * aNormal;
+		// vec3 localNormal = mat3(boneMatrices[aBoneIDs[i]]) * aNormal;
 	}
 
-	vec4 fragPos = model * totalPos;
+	vec4 fragPos = totalPos;
+	// vec4 fragPos = model * totalPos;
 	vec4 pos = projection * view * fragPos;
 	vec3 normal = aNormal;
 	vec2 texCoord = aTexCoord;
