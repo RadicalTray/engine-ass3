@@ -67,6 +67,12 @@ struct Keys {
 	bool tab;
 };
 
+enum PlayerState {
+	IDLE,
+	SWIM,
+	WALK,
+};
+
 struct State {
 	UniformBuffer ub;
 	Mouse mouse;
@@ -75,9 +81,11 @@ struct State {
 	int faces;
 	float dt;
 	Keys keys;
+	PlayerState player_state;
 
 	static State init(GLFWwindow *const window) {
 		State state = {};
+		state.player_state = IDLE;
 		state.faces = 4;
 		state.mouse = {
 			.sens = 0.1f,
@@ -109,7 +117,7 @@ struct State {
 
 		// pinned cam
 		pos.y += 1.0f;
-		this->ub.view = glm::lookAt(pos - 1.2f * this->view.front, pos, this->view.up);
+		this->ub.view = glm::lookAt(pos - 2.0f * this->view.front, pos + vec3(0.0, 0.3, 0.0), this->view.up);
 		// free cam
 		// this->ub.view = glm::lookAt(this->view.pos, this->view.pos + this->view.front, this->view.up);
 
@@ -178,6 +186,7 @@ int main() {
 
 	// Initialize shaders
 	const uint model_shader = createShader("./shaders/model.vert", "./shaders/model.frag");
+	// const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model.frag");
 	const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model_plain.frag");
 	int model_anim_shader_bone_matrices = glGetUniformLocation(model_anim_shader, "boneMatrices");
 
@@ -185,9 +194,11 @@ int main() {
 	Model model = Model::init("./Dancing Twerk.dae", false);
 	model.hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) };
 
-	// auto danceAnimation = Animation::init("./vampire/dancing_vampire.dae", model.bone_info_map);
-	auto danceAnimation = Animation::init("./Dancing Twerk.dae", model.bone_info_map);
-	auto animator = Animator::init(&danceAnimation);
+	// auto dance_anim = Animation::init("./vampire/dancing_vampire.dae", model.bone_info_map);
+	auto dance_anim = Animation::init("./Dancing Twerk.dae", model.bone_info_map);
+	auto swim_anim = Animation::init("./Swimming.dae", model.bone_info_map);
+	auto walk_anim = Animation::init("./Walking.dae", model.bone_info_map);
+	auto animator = Animator::init(&dance_anim);
 	assert(animator.bone_matrices.size() <= MAX_BONE_MATRICES);
 
 	Model obj = Model::init("./crate/Old_Crate.fbx", false);
@@ -275,6 +286,38 @@ int main() {
 				model.detectObj(new_pos, objs[i]);
 			}
 			model.pos = new_pos;
+
+			switch (state.player_state) {
+			case IDLE:
+				if (model.velocity.x != 0) {
+					if (new_pos.y == flr) {
+						state.player_state = WALK;
+						animator.playAnimation(&walk_anim);
+					} else {
+						state.player_state = SWIM;
+						animator.playAnimation(&swim_anim);
+					}
+				}
+				break;
+			case SWIM:
+				if (model.velocity.x == 0) {
+					state.player_state = IDLE;
+					animator.playAnimation(&dance_anim);
+				} else if (model.pos.y == flr) {
+					state.player_state = WALK;
+					animator.playAnimation(&walk_anim);
+				}
+				break;
+			case WALK:
+				if (model.velocity.x == 0) {
+					state.player_state = IDLE;
+					animator.playAnimation(&dance_anim);
+				} else if (model.pos.y > flr) {
+					state.player_state = SWIM;
+					animator.playAnimation(&swim_anim);
+				}
+				break;
+			}
 
 			animator.updateAnimation(state.dt/1000000.0f);
 		}

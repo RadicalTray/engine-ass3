@@ -26,9 +26,16 @@ struct Animator {
 		};
 	}
 
+	void playAnimation(Animation* anim) {
+		this->curr_anim = anim;
+		this->curr_time = 0;
+	}
+
 	void updateAnimation(float dt) {
-		this->curr_time = std::fmod(this->curr_time + this->curr_anim->ticks_per_sec * dt, this->curr_anim->duration);
-		this->calculateBoneTransform(&this->curr_anim->root_node, glm::mat4(1.0f));
+		if (this->curr_anim) {
+			this->curr_time = std::fmod(this->curr_time + this->curr_anim->ticks_per_sec * dt, this->curr_anim->duration);
+			this->calculateBoneTransform(&this->curr_anim->root_node, glm::mat4(1.0f));
+		}
 	}
 
 	void calculateBoneTransform(const AssimpNode* node, const glm::mat4& parent_transform) {

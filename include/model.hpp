@@ -37,6 +37,7 @@ struct Model {
 
 		uint flags = 0;
 		flags |= aiProcess_Triangulate;
+		// flags |= aiProcess_JoinIdenticalVertices;
 		// flags |= aiProcess_CalcTangentSpace;
 		if (flip_uv) flags |= aiProcess_FlipUVs;
 

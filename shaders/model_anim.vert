@@ -48,8 +48,7 @@ void main() {
 		// vec3 localNormal = mat3(boneMatrices[aBoneIDs[i]]) * aNormal;
 	}
 
-	vec4 fragPos = totalPos;
-	// vec4 fragPos = model * totalPos;
+	vec4 fragPos = model * totalPos;
 	vec4 pos = projection * view * fragPos;
 	vec3 normal = aNormal;
 	vec2 texCoord = aTexCoord;
