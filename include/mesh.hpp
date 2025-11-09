@@ -158,7 +158,7 @@ struct Mesh {
 
 		glVertexArrayVertexBuffer(vao, 0, this->vbo, 0, sizeof(Vertex));
 		glVertexArrayElementBuffer(vao, this->ebo);
-		glDrawElements(GL_TRIANGLES, static_cast<unsigned int>(indices.size()), GL_UNSIGNED_INT, 0);
+		glDrawElements(GL_TRIANGLES, static_cast<uint>(indices.size()), GL_UNSIGNED_INT, 0);
 	}
 };
 

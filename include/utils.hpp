@@ -261,6 +261,7 @@ uint createShader(const char *const vert_filename, const char *const frag_filena
 }
 
 std::string readFile(const char *const filepath) {
+	std::cerr << "debug: reading file " << filepath << std::endl;
 	std::ifstream file;
 	file.exceptions(std::ifstream::failbit | std::ifstream::badbit);
 	file.open(filepath);

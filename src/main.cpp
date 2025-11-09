@@ -185,53 +185,30 @@ int main() {
 	glNamedBufferData(ubo, sizeof(UniformBuffer), &state.ub, GL_DYNAMIC_DRAW);
 
 	// Initialize shaders
-	const uint model_shader = createShader("./shaders/model.vert", "./shaders/model.frag");
-	// const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model.frag");
+	// const uint model_shader = createShader("./shaders/model.vert", "./shaders/model.frag");
+	const uint model_shader = createShader("./shaders/model.vert", "./shaders/model_plain.frag");
 	const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model_plain.frag");
+	// const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model_plain.frag");
 	int model_anim_shader_bone_matrices = glGetUniformLocation(model_anim_shader, "boneMatrices");
 
 	// Model model = Model::init("./vampire/dancing_vampire.dae", false);
-	Model model = Model::init("./Dancing Twerk.dae", false);
+	Model model = Model::init("./dancing_twerk/Dancing Twerk.dae", false);
 	model.hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) };
 
 	// auto dance_anim = Animation::init("./vampire/dancing_vampire.dae", model.bone_info_map);
-	auto dance_anim = Animation::init("./Dancing Twerk.dae", model.bone_info_map);
-	auto swim_anim = Animation::init("./Swimming.dae", model.bone_info_map);
-	auto walk_anim = Animation::init("./Walking.dae", model.bone_info_map);
+	auto dance_anim = Animation::init("./dancing_twerk/Dancing Twerk.dae", model.bone_info_map);
+	auto swim_anim = Animation::init("./dancing_twerk/Dancing Twerk.dae", model.bone_info_map);
+	auto walk_anim = Animation::init("./dancing_twerk/Dancing Twerk.dae", model.bone_info_map);
 	auto animator = Animator::init(&dance_anim);
 	assert(animator.bone_matrices.size() <= MAX_BONE_MATRICES);
 
-	Model obj = Model::init("./crate/Old_Crate.fbx", false);
+	Model obj = Model::init("./lowpoly_island/scene.gltf", false);
 	obj.hitbox = model.hitbox;
 	obj.hitbox.min.z += 0.4f;
 	obj.hitbox.max.z += 0.4f;
 
-	std::vector<Model> objs(8);
-	obj.pos.x += 10;
-	objs[0] = obj;
-	obj.pos.x += 1;
-	obj.pos.z += 1;
-	objs[1] = obj;
-	obj.pos.x += 1;
-	obj.pos.x += 1;
-	obj.pos.y += 1;
-	obj.pos.z += 1;
-	objs[2] = obj;
-	obj.pos.x += 1;
-	obj.pos.z += 2;
-	objs[3] = obj;
-	obj.pos.x += 1;
-	objs[4] = obj;
-	obj.pos.y += 1;
-	obj.pos.x += 1;
-	objs[5] = obj;
-	obj.pos.x += 1;
-	obj.pos.y += 1;
-	obj.pos.z += 1;
-	objs[6] = obj;
-	obj.pos.x += 1;
-	obj.pos.z += 2;
-	objs[7] = obj;
+	// TODO: store a ptr/handle to Model instead of having multiple copies
+	std::vector<Model> objs(1, obj);
 
 	glBindVertexArray(vao);
 	glEnable(GL_BLEND);
@@ -337,6 +314,7 @@ int main() {
 
 			glUseProgram(model_shader);
 			for (auto o : objs) {
+				std::cerr << "drawing" << std::endl;
 				state.updateModel(o.pos, vec3(1.0f), vec2(0.0f));
 				state.uploadModel(ubo);
 				o.draw(vao, model_shader);
