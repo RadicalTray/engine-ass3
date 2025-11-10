@@ -39,9 +39,9 @@ struct Mesh {
 	uint vbo;
 	uint ebo;
 
-	// PERF: possibly realloc a lot, try reserve
 	static Mesh init(aiMesh *mesh, const aiScene *scene, std::vector<TextureInfo>& textures_loaded, std::map<std::string, BoneInfo>& bone_info_map, const std::string& directory) {
 		std::vector<Vertex> vertices;
+		vertices.reserve(mesh->mNumVertices);
 		for (uint i = 0; i < mesh->mNumVertices; i++) {
 			Vertex vertex = {};
 			vertex.bone_ids.fill(-1);
@@ -49,8 +49,12 @@ struct Mesh {
 
 			vertex.pos = vec3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z);
 
+			if (mesh->HasVertexColors(0)) {
+				vertex.clr = glmFromAssimpVec4(mesh->mColors[0][i]);
+			}
+
 			if (mesh->HasNormals()) {
-				vertex.norm = vec3(mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z);
+				vertex.norm = glmFromAssimpVec3(mesh->mNormals[i]);
 			}
 
 			if (mesh->HasTextureCoords(0)) {
@@ -58,14 +62,15 @@ struct Mesh {
 			}
 
 			if (mesh->HasTangentsAndBitangents()) {
-				vertex.tan = vec3(mesh->mTangents[i].x, mesh->mTangents[i].y, mesh->mTangents[i].z);
-				vertex.bitan = vec3(mesh->mBitangents[i].x, mesh->mBitangents[i].y, mesh->mBitangents[i].z);
+				vertex.tan = glmFromAssimpVec3(mesh->mTangents[i]);
+				vertex.bitan = glmFromAssimpVec3(mesh->mBitangents[i]);
 			}
 
 			vertices.push_back(vertex);
 		}
 
 		std::vector<uint> indices;
+		indices.reserve(mesh->mNumFaces * 3);
 		for (uint i = 0; i < mesh->mNumFaces; i++) {
 			aiFace face = mesh->mFaces[i];
 			for (uint j = 0; j < face.mNumIndices; j++) {
@@ -74,6 +79,7 @@ struct Mesh {
 		}
 
 		std::vector<Texture> textures;
+		textures.reserve(4);
 		aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
 		loadMaterialTextures(textures, textures_loaded, material, aiTextureType_DIFFUSE, directory);
 		loadMaterialTextures(textures, textures_loaded, material, aiTextureType_SPECULAR, directory);
@@ -132,6 +138,9 @@ struct Mesh {
 	//
 	// BUG: BREAKS IF THERE MUITIPLE TEXTURES OF THE SAME TYPE (unimplemented lol)
 	void draw(uint vao, uint shader) const {
+		glUseProgram(shader);
+		glBindVertexArray(vao);
+
 		// THUNK: does this really need to be an array? can't a struct suffice?
 		for (usize i = 0; i < this->textures.size(); i++) {
 			int loc = 0;

@@ -10,11 +10,13 @@ layout(location = 3) in vec3 aTangent;
 layout(location = 4) in vec3 aBitangent;
 layout(location = 5) in int aBoneIDs[MAX_BONE_INFLUENCE];
 layout(location = 6) in float aWeights[MAX_BONE_INFLUENCE];
+layout(location = 7) in vec4 aColor;
 
 out VS_OUT {
 	vec3 FragPos;
 	vec3 Normal;
 	vec2 TexCoord;
+	vec4 FragColor;
 } vsOut;
 
 layout(binding = 0) uniform UniformBuffer {
@@ -39,4 +41,5 @@ void main() {
 	vsOut.FragPos = fragPos.xyz / fragPos.w;
 	vsOut.Normal = mat3(model_IT) * normal;
 	vsOut.TexCoord = texCoord;
+	vsOut.FragColor = aColor;
 }

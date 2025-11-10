@@ -12,64 +12,11 @@
 
 #include <assimp/matrix4x4.h>
 #include <assimp/quaternion.h>
+#include <assimp/vector2.h>
 #include <assimp/vector3.h>
+#include <assimp/color4.h>
 
-#define MAX_BONE_INFLUENCE 4
-#define MAX_BONE_MATRICES 128
-
-using glm::mat4, glm::vec2, glm::vec3, glm::vec4, glm::uvec2, glm::ivec2;
-namespace chrono = std::chrono;
-
-typedef unsigned char uchar;
-typedef uint32_t uint;
-typedef size_t usize;
-
-struct BoneInfo {
-	// in Animator.bone_matrices
-	int id;
-
-	glm::mat4 offset;
-};
-
-struct Vertex {
-	vec3 pos;
-	vec3 norm;
-	vec2 tex;
-	vec3 tan;
-	vec3 bitan;
-	std::array<int, MAX_BONE_INFLUENCE> bone_ids;
-	std::array<float, MAX_BONE_INFLUENCE> weights;
-
-	static void setupVAO(uint vao) {
-		glEnableVertexArrayAttrib(vao,  0);
-		glVertexArrayAttribFormat(vao,  0, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, pos));
-		glVertexArrayAttribBinding(vao, 0, 0);
-
-		glEnableVertexArrayAttrib(vao,  1);
-		glVertexArrayAttribFormat(vao,  1, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, norm));
-		glVertexArrayAttribBinding(vao, 1, 0);
-
-		glEnableVertexArrayAttrib(vao,  2);
-		glVertexArrayAttribFormat(vao,  2, 2, GL_FLOAT, GL_FALSE, offsetof(Vertex, tex));
-		glVertexArrayAttribBinding(vao, 2, 0);
-
-		glEnableVertexArrayAttrib(vao,  3);
-		glVertexArrayAttribFormat(vao,  3, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, tan));
-		glVertexArrayAttribBinding(vao, 3, 0);
-
-		glEnableVertexArrayAttrib(vao,  4);
-		glVertexArrayAttribFormat(vao,  4, 3, GL_FLOAT, GL_FALSE, offsetof(Vertex, bitan));
-		glVertexArrayAttribBinding(vao, 4, 0);
-
-		glEnableVertexArrayAttrib(vao,  5);
-		glVertexArrayAttribIFormat(vao,  5, MAX_BONE_INFLUENCE, GL_INT, offsetof(Vertex, bone_ids));
-		glVertexArrayAttribBinding(vao, 5, 0);
-
-		glEnableVertexArrayAttrib(vao,  6);
-		glVertexArrayAttribFormat(vao,  6, MAX_BONE_INFLUENCE, GL_FLOAT, GL_FALSE, offsetof(Vertex, weights));
-		glVertexArrayAttribBinding(vao, 6, 0);
-	}
-};
+#include <types.hpp>
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height);
 void GLAPIENTRY debugMessageCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam);
@@ -152,8 +99,7 @@ debugMessageCallback(
 	case GL_DEBUG_SEVERITY_LOW:          severity_str = "low"; break;
 	case GL_DEBUG_SEVERITY_NOTIFICATION: severity_str = "notification"; break;
 	}
-	// std::cerr << "GL(" << type_str << ", " << source_str << ", " << severity_str << ", " << id << "): " << message << std::endl;
-	std::cerr << "GL(" << type_str << "): " << message << std::endl;
+	std::cerr << "gl(" << type_str << "): " << message << std::endl;
 }
 
 uint texture2DFromFile(const char* filepath, int levels) {
@@ -162,11 +108,11 @@ uint texture2DFromFile(const char* filepath, int levels) {
 	uint tex;
 	glCreateTextures(GL_TEXTURE_2D, 1, &tex);
 
-	int width, height, nrChannels;
-	uchar *data = stbi_load(filepath, &width, &height, &nrChannels, 0);
+	int width, height, n_channels;
+	uchar *data = stbi_load(filepath, &width, &height, &n_channels, 0);
 	if (data) {
 		GLenum internalformat = GL_R8, format = GL_RED;
-		switch (nrChannels) {
+		switch (n_channels) {
 		case 1:
 			internalformat = GL_R8;
 			format = GL_RED;
@@ -280,8 +226,16 @@ glm::mat4 glmFromAssimpMat4(const aiMatrix4x4& src) {
 	return m;
 }
 
+glm::vec2 glmFromAssimpVec2(const aiVector2D& src) {
+	return glm::vec2(src.x, src.y);
+}
+
 glm::vec3 glmFromAssimpVec3(const aiVector3D& src) {
 	return glm::vec3(src.x, src.y, src.z);
+}
+
+glm::vec4 glmFromAssimpVec4(const aiColor4D& src) {
+	return glm::vec4(src.r, src.g, src.b, src.a);
 }
 
 glm::quat glmFromAssimpQuat(const aiQuaternion& src) {

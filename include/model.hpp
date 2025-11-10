@@ -29,18 +29,22 @@ struct Model {
 	vec3 pos;
 	Box hitbox;
 	std::map<std::string, BoneInfo> bone_info_map;
+	uint vao;
+	uint shader;
 
 	// vec3 front; // follow cam
 
-	static Model init(const std::string& path, bool flip_uv) {
+	static Model init(const std::string& path, uint vao, uint shader) {
 		Model model = {};
+		model.vao = vao;
+		model.shader = shader;
 
 		uint flags = 0;
 		flags |= aiProcess_Triangulate;
 		// flags |= aiProcess_JoinIdenticalVertices;
 		// flags |= aiProcess_CalcTangentSpace;
-		if (flip_uv) flags |= aiProcess_FlipUVs;
 
+		std::cerr << "assimp(info): loading " << path << std::endl;
 		Assimp::Importer imp;
 		const aiScene *scene = imp.ReadFile(path, flags);
 		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
@@ -63,10 +67,9 @@ struct Model {
 		}
 	}
 
-
-	void draw(uint vao, uint shader) const {
+	void draw() const {
 		for (auto m : this->meshes) {
-			m.draw(vao, shader);
+			m.draw(this->vao, this->shader);
 		}
 	}
 

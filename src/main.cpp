@@ -20,10 +20,12 @@
 #include <animation.hpp>
 #include <animator.hpp>
 
-namespace chrono = std::chrono;
-
-const float flr = -0.0f;
-const float gravity = 0.0002f;
+mat4 getView(vec3 model_pos, vec3 front, vec3 up, bool cam_zero);
+void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
+void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
+void cursorPosCallback(GLFWwindow* window, double xpos, double ypos);
+void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
+void windowSizeCallback(GLFWwindow* window, int width, int height);
 
 struct Mouse {
 	double last_xpos;
@@ -99,36 +101,39 @@ struct State {
 			.speed = 0.004f,
 		};
 		state.ub = {
-			.light_pos = vec4(1.2f, 10.0f, 2.0f, 0.2f),
+			.light_pos = vec4(0.0f, 100.0f, 1.0f, 0.2f),
 			.light_clr = vec4(1.0f),
 			.ambient_clr = vec4(1.0f),
 			.ambient_str = 0.5f,
 		};
 		glfwGetWindowSize(window, &state.scr_res.x, &state.scr_res.y);
 		glfwGetCursorPos(window, &state.mouse.last_xpos, &state.mouse.last_ypos);
-		state.updateUB(vec3(0.0f));
+		state.updateViewProj(vec3(0.0f));
 		state.updateModel(vec3(0.0f), vec3(1.0f), vec2(0.0f));
 		return state;
 	}
 
-	// does not update Model matrices
-	void updateUB(vec3 pos) {
-		this->ub.projection = glm::perspective(glm::radians(this->view.fov), (float)this->scr_res.x / (float)this->scr_res.y, 0.1f, 100.0f);
+	void uploadUB(uint ubo) const {
+		glNamedBufferSubData(ubo, 0, sizeof(UniformBuffer), &this->ub);
+	}
 
+	void updateViewProj(vec3 pos) {
 		// pinned cam
-		pos.y += 1.0f;
-		this->ub.view = glm::lookAt(pos - 2.0f * this->view.front, pos + vec3(0.0, 0.3, 0.0), this->view.up);
+		this->ub.view = getView(pos, this->view.front, this->view.up, false);
 		// free cam
 		// this->ub.view = glm::lookAt(this->view.pos, this->view.pos + this->view.front, this->view.up);
+
+		this->ub.projection = glm::perspective(glm::radians(this->view.fov), (float)this->scr_res.x / (float)this->scr_res.y, 0.1f, 100.0f);
 
 		this->ub.view_pos = vec4(this->view.pos, 0.0f);
 	}
 
-	// maybe we should consider merging this with updateXX lol
-	//
-	// NOTE: This also uploads model
-	void uploadUB(uint ubo) const {
-		glNamedBufferSubData(ubo, 0, sizeof(UniformBuffer), &this->ub);
+	void uploadModelViewProj(uint ubo) {
+		glNamedBufferSubData(ubo, 0, 4*sizeof(mat4) + sizeof(vec4), &this->ub);
+	}
+
+	void uploadViewProj(uint ubo) {
+		glNamedBufferSubData(ubo, offsetof(UniformBuffer, view), 2*sizeof(mat4) + sizeof(vec4), &this->ub);
 	}
 
 	void updateModel(vec3 pos, vec3 scale, vec2 front) {
@@ -140,9 +145,9 @@ struct State {
 		float angle = std::atan2(u.x*v.x + u.y*v.y, u.x*v.y - u.y*v.x);
 
 		mat4 model(1.0f);
-		model = glm::scale    (model, scale);
+		model = glm::scale(model, scale);
 		model = glm::translate(model, pos);
-		model = glm::rotate   (model, angle, up);
+		model = glm::rotate(model, angle, up);
 
 		this->ub.model = model;
 		this->ub.model_it = glm::transpose(glm::inverse(model));
@@ -153,11 +158,127 @@ struct State {
 	}
 };
 
-void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
-void cursorPosCallback(GLFWwindow* window, double xpos, double ypos);
-void scrollCallback(GLFWwindow* window, double xoffset, double yoffset);
-void windowSizeCallback(GLFWwindow* window, int width, int height);
+struct CubeMap {
+	std::vector<vec3> vertices;
+	std::vector<uint> indices;
+	uint vao;
+	uint vbo;
+	uint ebo;
+	uint shader;
+	uint tex;
+
+	static CubeMap init() {
+		CubeMap cube_map = {};
+
+		glCreateVertexArrays(1, &cube_map.vao);
+		glEnableVertexArrayAttrib(cube_map.vao,  0);
+		glVertexArrayAttribFormat(cube_map.vao,  0, 3, GL_FLOAT, GL_FALSE, 0);
+		glVertexArrayAttribBinding(cube_map.vao, 0, 0);
+
+		cube_map.shader = createShader("./shaders/cube_map.vert", "./shaders/cube_map.frag");
+		glProgramUniform1i(cube_map.shader, 0, 0);
+
+		const char *paths[6] = {
+			"assets/envmap_miramar/miramar_ft.tga",
+			"assets/envmap_miramar/miramar_bk.tga",
+			"assets/envmap_miramar/miramar_up.tga",
+			"assets/envmap_miramar/miramar_dn.tga",
+			"assets/envmap_miramar/miramar_rt.tga",
+			"assets/envmap_miramar/miramar_lf.tga",
+		};
+
+		glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &cube_map.tex);
+		glTextureParameteri(cube_map.tex, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTextureParameteri(cube_map.tex, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTextureParameteri(cube_map.tex, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+		glTextureParameteri(cube_map.tex, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTextureParameteri(cube_map.tex, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		bool texture_allocated = false;
+
+		stbi_set_flip_vertically_on_load(false);
+		for (int i = 0; i < 6; i++) {
+			int width, height, n_channels;
+			uchar *data = stbi_load(paths[i], &width, &height, &n_channels, 3);
+			if (data) {
+				if (!texture_allocated) {
+					glTextureStorage2D(cube_map.tex, 1, GL_RGB8, width, height);
+					texture_allocated = true;
+				}
+				glTextureSubImage3D(cube_map.tex, 0, 0, 0, i, width, height, 1, GL_RGB, GL_UNSIGNED_BYTE, data);
+			} else {
+				std::cerr << "stbi(error): " << stbi_failure_reason() << " (" << paths[i] << ")" << std::endl;
+			}
+			stbi_image_free(data);
+		}
+
+		uint flags = 0;
+		flags |= aiProcess_Triangulate;
+
+		const char *path = "assets/cube.obj";
+		std::cerr << "assimp(info): loading " << path << std::endl;
+		Assimp::Importer imp;
+		const aiScene *scene = imp.ReadFile(path, flags);
+		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+			std::cerr << "assimp(error): " << imp.GetErrorString() << std::endl;
+			return {}; // TODO: handle error
+		}
+		cube_map.processNode(scene->mRootNode, scene);
+
+		glCreateBuffers(2, &cube_map.vbo);
+		glNamedBufferData(cube_map.vbo, cube_map.vertices.size() * sizeof(vec3), cube_map.vertices.data(), GL_STATIC_DRAW);
+		glNamedBufferData(cube_map.ebo, cube_map.indices.size() * sizeof(uint), cube_map.indices.data(), GL_STATIC_DRAW);
+
+		return cube_map;
+	}
+
+	void processNode(aiNode* node, const aiScene* scene) {
+		for (uint i = 0; i < node->mNumMeshes; i++) {
+			aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
+
+			this->vertices.reserve(this->vertices.size() + mesh->mNumVertices);
+			for (uint i = 0; i < mesh->mNumVertices; i++) {
+				this->vertices.push_back(vec3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z));
+			}
+
+			this->indices.reserve(this->indices.size() + mesh->mNumFaces * 3);
+			for (uint i = 0; i < mesh->mNumFaces; i++) {
+				aiFace face = mesh->mFaces[i];
+				for (uint j = 0; j < face.mNumIndices; j++) {
+					this->indices.push_back(face.mIndices[j]);
+				}
+			}
+		}
+		for (uint i = 0; i < node->mNumChildren; i++) {
+			processNode(node->mChildren[i], scene);
+		}
+	}
+
+	void draw() const {
+		int old_cull_face_mode;
+		glGetIntegerv(GL_CULL_FACE_MODE, &old_cull_face_mode);
+		int old_depth_func;
+		glGetIntegerv(GL_DEPTH_FUNC, &old_depth_func);
+
+		glCullFace(GL_FRONT);
+		glDepthFunc(GL_LEQUAL);
+
+		glUseProgram(this->shader);
+		glBindVertexArray(this->vao);
+
+		// uniform has already been set to texture 0 in init()
+		glBindTextureUnit(0, this->tex);
+
+		glVertexArrayVertexBuffer(this->vao, 0, this->vbo, 0, sizeof(vec3));
+		glVertexArrayElementBuffer(this->vao, this->ebo);
+		glDrawElements(GL_TRIANGLES, static_cast<uint>(this->indices.size()), GL_UNSIGNED_INT, 0);
+
+		glCullFace(old_cull_face_mode);
+		glDepthFunc(old_depth_func);
+	}
+};
+
+const float flr = 0.0f;
+const float gravity = 0.0002f;
 
 int main() {
 	GLFWwindow *window = init();
@@ -185,36 +306,41 @@ int main() {
 	glNamedBufferData(ubo, sizeof(UniformBuffer), &state.ub, GL_DYNAMIC_DRAW);
 
 	// Initialize shaders
-	// const uint model_shader = createShader("./shaders/model.vert", "./shaders/model.frag");
-	const uint model_shader = createShader("./shaders/model.vert", "./shaders/model_plain.frag");
-	const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model_plain.frag");
-	// const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model_plain.frag");
-	int model_anim_shader_bone_matrices = glGetUniformLocation(model_anim_shader, "boneMatrices");
+	const uint model_vert_shader = createShader("./shaders/model.vert", "./shaders/model_vert.frag");
+	const uint model_shader = createShader("./shaders/model.vert", "./shaders/model.frag");
+	const uint model_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model.frag");
+	const uint model_plain_shader = createShader("./shaders/model.vert", "./shaders/model_plain.frag");
+	const uint model_plain_anim_shader = createShader("./shaders/model_anim.vert", "./shaders/model_plain.frag");
+
+	// TODO: move this inside model
+	const int model_anim_shader_bone_matrices = glGetUniformLocation(model_plain_anim_shader, "boneMatrices");
 
 	// Model model = Model::init("./vampire/dancing_vampire.dae", false);
-	Model model = Model::init("./dancing_twerk/Dancing Twerk.dae", false);
+	Model model = Model::init("./assets/Dancing Twerk.dae", vao, model_plain_anim_shader);
 	model.hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) };
 
 	// auto dance_anim = Animation::init("./vampire/dancing_vampire.dae", model.bone_info_map);
-	auto dance_anim = Animation::init("./dancing_twerk/Dancing Twerk.dae", model.bone_info_map);
-	auto swim_anim = Animation::init("./dancing_twerk/Dancing Twerk.dae", model.bone_info_map);
-	auto walk_anim = Animation::init("./dancing_twerk/Dancing Twerk.dae", model.bone_info_map);
+	auto dance_anim = Animation::init("./assets/Dancing Twerk.dae", model.bone_info_map);
+	auto swim_anim = Animation::init("./assets/Swimming.dae", model.bone_info_map);
+	auto walk_anim = Animation::init("./assets/Walking.dae", model.bone_info_map);
 	auto animator = Animator::init(&dance_anim);
 	assert(animator.bone_matrices.size() <= MAX_BONE_MATRICES);
 
-	Model obj = Model::init("./lowpoly_island/scene.gltf", false);
-	obj.hitbox = model.hitbox;
-	obj.hitbox.min.z += 0.4f;
-	obj.hitbox.max.z += 0.4f;
+	Model tower = Model::init("./assets/fantasy_tower/scene.gltf", vao, model_shader);
+	Model map = Model::init("./assets/low_poly_island/scene.gltf", vao, model_shader);
+	// Model cat = Model::init("./assets/cat_low_poly.glb", vao, model_plain_shader);
 
 	// TODO: store a ptr/handle to Model instead of having multiple copies
-	std::vector<Model> objs(1, obj);
+	//  Potential solution: DrawContext{ vao, shader, drawfn }
+	std::vector<Model> objs;
 
-	glBindVertexArray(vao);
+	CubeMap cube_map = CubeMap::init();
+
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_CULL_FACE);
+	// glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
 	auto start = chrono::steady_clock::now();
 	while (!glfwWindowShouldClose(window)) {
@@ -302,33 +428,41 @@ int main() {
 			glClearColor(0.0f, 0.0f, 0.0f, 1.00f);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-			glUseProgram(model_anim_shader);
-
+			// render player model
 			const auto& transforms = animator.bone_matrices;
-			glProgramUniformMatrix4fv(model_anim_shader, model_anim_shader_bone_matrices, transforms.size(), false, glm::value_ptr(transforms[0]));
+			glProgramUniformMatrix4fv(model_plain_anim_shader, model_anim_shader_bone_matrices, transforms.size(), false, glm::value_ptr(transforms[0]));
 
 			state.updateModel(model.pos, vec3(1.0f), vec2(state.view.front.x, state.view.front.z));
-			state.updateUB(model.pos);
-			state.uploadUB(ubo);
-			model.draw(vao, model_anim_shader);
+			state.updateViewProj(model.pos);
+			state.uploadModelViewProj(ubo);
+			model.draw();
 
-			glUseProgram(model_shader);
+			// render objects
 			for (auto o : objs) {
-				std::cerr << "drawing" << std::endl;
 				state.updateModel(o.pos, vec3(1.0f), vec2(0.0f));
 				state.uploadModel(ubo);
-				o.draw(vao, model_shader);
+				o.draw();
 			}
+			state.updateModel(vec3(0.0f, -2.0f, 0.0f), vec3(4.0f, 1.0f, 4.0f), vec2(0.0f));
+			state.uploadModel(ubo);
+			map.draw();
+			state.updateModel(vec3(0.0f, 1.0f, 0.0f), vec3(10.0f), vec2(0.0f));
+			state.uploadModel(ubo);
+			tower.draw();
+
+			// render cube map
+			mat4 view = getView(vec3(0.0), state.view.front, state.view.up, true);
+			glNamedBufferSubData(ubo, offsetof(UniformBuffer, view), sizeof(mat4), glm::value_ptr(view));
+			cube_map.draw();
 		}
 		glfwSwapBuffers(window);
 	}
 
-	glDeleteProgram(model_shader);
-	glDeleteProgram(model_anim_shader);
-
 	// TODO: free stuff
 	// glDeleteVertexArrays(, );
 	// glDeleteBuffers(, );
+	// glDeleteProgram(model_plain_shader);
+	// glDeleteProgram(model_plain_anim_shader);
 
 	deinit(&window);
 	return 0;
@@ -479,4 +613,14 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
 void windowSizeCallback(GLFWwindow* window, int width, int height) {
 	State *state = reinterpret_cast<State*>(glfwGetWindowUserPointer(window));
 	state->scr_res = ivec2(width, height);
+}
+
+mat4 getView(vec3 model_pos, vec3 front, vec3 up, bool cam_zero) {
+	vec3 radius = 2.0f * front;
+	if (!cam_zero) {
+		model_pos.y += 1.3f;
+		return glm::lookAt(model_pos - radius, model_pos, up);
+	} else {
+		return glm::lookAt(vec3(0.0), radius, up);
+	}
 }

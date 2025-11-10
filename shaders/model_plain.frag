@@ -31,7 +31,7 @@ layout(location = 3) uniform sampler2D height_texture;
 //	Specular texture
 //	Height texture (tf is a height texture, isn't it for tesselation?)
 void main() {
-	vec4 color = texture(diffuse_texture, vsOut.TexCoord);
+	vec4 color = vec4(1.0f);
 	vec3 ambient = ambientStr * ambientClr.xyz;
 
 	vec3 norm = normalize(vsOut.Normal);
