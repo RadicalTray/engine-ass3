@@ -13,15 +13,14 @@
 #include <thread>
 #include <iostream>
 #include <vector>
-#include <random>
 #include <array>
+#include <random>
 
 #include <utils.hpp>
 #include <model.hpp>
 #include <animation.hpp>
 #include <animator.hpp>
 
-mat4 getView(vec3 model_pos, vec3 front, vec3 up, bool cam_zero);
 float getAngle(vec2 u, vec2 v);
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
@@ -100,7 +99,7 @@ struct State {
 			.front = vec3(0.0f, 0.0f, -1.0f),
 			.up = vec3(0.0f, 1.0f, 0.0f),
 			.fov = 90.0f,
-			.speed = 0.004f,
+			.speed = 0.032f,
 		};
 		state.ub = {
 			.light_pos = vec4(0.0f, 100.0f, 1.0f, 0.2f),
@@ -121,11 +120,13 @@ struct State {
 
 	void updateViewProj(vec3 pos) {
 		// pinned cam
-		this->ub.view = getView(pos, this->view.front, this->view.up, false);
+		vec3 radius = 4.0f * this->view.front;
+		pos.y += 2.5f;
+		this->ub.view = glm::lookAt(pos - radius, pos, this->view.up);
 		// free cam
 		// this->ub.view = glm::lookAt(this->view.pos, this->view.pos + this->view.front, this->view.up);
 
-		this->ub.projection = glm::perspective(glm::radians(this->view.fov), (float)this->scr_res.x / (float)this->scr_res.y, 0.1f, 100.0f);
+		this->ub.projection = glm::perspective(glm::radians(this->view.fov), (float)this->scr_res.x / (float)this->scr_res.y, 0.1f, 10000.0f);
 
 		this->ub.view_pos = vec4(this->view.pos, 0.0f);
 	}
@@ -138,11 +139,15 @@ struct State {
 		glNamedBufferSubData(ubo, offsetof(UniformBuffer, view), 2*sizeof(mat4) + sizeof(vec4), &this->ub);
 	}
 
-	void updateModel(vec3 pos, vec3 scale, float angle) {
+	void updateModel(vec3 pos, vec3 scale, float angle, float angle2 = 0.0) {
+		const vec3 up = vec3(0.0f, 1.0f, 0.0f);
+		const vec3 side = vec3(1.0f, 0.0f, 0.0f);
+
 		mat4 model(1.0f);
 		model = glm::translate(model, pos);
 		model = glm::scale(model, scale);
-		model = glm::rotate(model, angle, vec3(0.0f, 1.0f, 0.0f));
+		model = glm::rotate(model, angle, up);
+		model = glm::rotate(model, angle2, side);
 
 		this->ub.model = model;
 		this->ub.model_it = glm::transpose(glm::inverse(model));
@@ -154,7 +159,7 @@ struct State {
 };
 
 struct Entity {
-	const Model& model;
+	Model* model;
 	Box hitbox = {};
 	vec3 scale = vec3(1.0);
 	vec3 velocity = vec3(0.0f);
@@ -222,14 +227,12 @@ int main() {
 	std::uniform_real_distribution<> dis(0.0, 1.0);
 
 	// Initialize buffers
-	std::array<uint, 1> va{};
-	std::array<uint, 1> b{};
-	glCreateVertexArrays(va.size(), va.data());
-        glCreateBuffers(b.size(), b.data());
+	uint vao;
+	uint ubo;
+	glCreateVertexArrays(1, &vao);
+	glCreateBuffers(1, &ubo);
 
-	const uint vao = va[0];
-	const uint ubo = b[0];
-
+	// TODO: make this createVAO
 	Vertex::setupVAO(vao);
 
 	glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo);
@@ -245,10 +248,7 @@ int main() {
 	// TODO: move this inside model
 	const int model_anim_shader_bone_matrices = glGetUniformLocation(model_plain_anim_shader, "boneMatrices");
 
-	// Model model = Model::init("./vampire/dancing_vampire.dae", false);
 	Model model = Model::init("./assets/Dancing Twerk.dae", vao, model_plain_anim_shader);
-
-	// auto dance_anim = Animation::init("./vampire/dancing_vampire.dae", model.bone_info_map);
 	auto dance_anim = Animation::init("./assets/Dancing Twerk.dae", model.bone_info_map);
 	auto swim_anim = Animation::init("./assets/Swimming.dae", model.bone_info_map);
 	auto walk_anim = Animation::init("./assets/Walking.dae", model.bone_info_map);
@@ -257,21 +257,22 @@ int main() {
 
 	Model tower_model = Model::init("./assets/fantasy_tower/scene.gltf", vao, model_shader);
 	Model map = Model::init("./assets/low_poly_island/scene.gltf", vao, model_shader);
-	Model cat = Model::init("./assets/mouse/mouse.gltf", vao, model_shader);
 	Model cube = Model::init("./assets/cube.obj", vao, model_plain_shader);
+	Model mouse = Model::init("./assets/mouse/mouse.gltf", vao, model_shader);
+	Model cat = Model::init("./assets/cat/bleh.gltf", vao, model_shader);
 
 	std::vector<Entity> enemies;
-	enemies.push_back({ .model = cat, .hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) } });
 
 	Entity player = {
-		.model = model,
+		.model = &model,
 		.hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) },
 	};
 
 	Entity tower = {
-		.model = tower_model,
+		.model = &tower_model,
 		.hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) },
-		.pos = vec3(10.0f, 12.0f, 10.0f),
+		.scale = vec3(12.0f),
+		.pos = vec3(0.0f, 12.0f, 0.0f),
 		.angle = 200.0/180.0 * M_PI,
 	};
 
@@ -286,46 +287,48 @@ int main() {
 	glEnable(GL_CULL_FACE);
 	// glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
-	float timer = 1.0f;
+	float timer = 0.0f;
 	auto start = chrono::steady_clock::now();
 	while (!glfwWindowShouldClose(window)) {
 		auto now = chrono::steady_clock::now();
 		state.dt = chrono::duration_cast<chrono::microseconds>(now - start).count();
 		start = now;
 
-		if (timer < 0.0f) {
-			vec3 pos = vec3(dis(gen) * 80.0, 0.0, dis(gen) * 80.0);
-			enemies.push_back({ .model = cat, .hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) }, .scale = vec3(dis(gen)*4.0), .pos = pos });
-			timer = 1.0f;
+		if (timer <= 0.0f) {
+			vec3 pos = vec3(dis(gen) * 360.0 - 180.0, 0.0, dis(gen) * 360.0 - 180.0);
+			enemies.push_back({ .model = &mouse, .hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) }, .scale = vec3(dis(gen)*15.0 + 1.0), .pos = pos });
+			timer = 0.4f;
 		} else {
 			timer -= state.dt / 1'000'000.0f;
 		}
 
 		{ // process
 			glfwPollEvents();
-			const float dt_ms = state.dt/1000.0f;
-
-			player.velocity.x = 0;
-			player.velocity.y -= gravity * dt_ms;
-			player.velocity.z = 0;
+			float dt_ms = state.dt/1000.0f;
 
 			vec3 forward = state.view.front;
 			forward.y = 0.0f;
+			forward = glm::normalize(forward);
 			vec3 right = glm::normalize(glm::cross(state.view.front, state.view.up));
 			vec3 dir = vec3(0);
 			if (state.keys.w) dir += forward;
 			if (state.keys.s) dir -= forward;
 			if (state.keys.a) dir -= right;
 			if (state.keys.d) dir += right;
+			if (state.keys.space) player.velocity.y += 2.00f*gravity*dt_ms;
 
-			vec3 vel = dir*state.view.speed*dt_ms;
-			player.velocity.x = vel.x;
-			if (state.keys.space) player.velocity.y += 1.35f*gravity*dt_ms;
-			player.velocity.z = vel.z;
+			player.velocity.x = 0;
+			player.velocity.z = 0;
+                        player.velocity.y -= gravity*dt_ms;
+
+			if (dir != vec3(0.0)) {
+				vec3 vel = glm::normalize(dir)*state.view.speed*dt_ms;
+				player.velocity.x = vel.x;
+				player.velocity.z = vel.z;
+			}
 
 			vec3 new_pos = player.pos + player.velocity;
 
-			// player collisions
 			if (new_pos.y < flr) {
 				new_pos.y = flr;
 				player.velocity.y = 0.0f;
@@ -343,14 +346,14 @@ int main() {
 						animator.playAnimation(&walk_anim);
 					} else {
 						state.player_state = SWIM;
-						animator.playAnimation(&swim_anim);
+						animator.playAnimation(&walk_anim);
 					}
 				}
 				break;
 			case SWIM:
 				if (player.velocity.x == 0) {
 					state.player_state = IDLE;
-					animator.playAnimation(&dance_anim);
+					animator.playAnimation(&walk_anim);
 				} else if (player.pos.y == flr) {
 					state.player_state = WALK;
 					animator.playAnimation(&walk_anim);
@@ -359,7 +362,7 @@ int main() {
 			case WALK:
 				if (player.velocity.x == 0) {
 					state.player_state = IDLE;
-					animator.playAnimation(&dance_anim);
+					animator.playAnimation(&walk_anim);
 				} else if (player.pos.y > flr) {
 					state.player_state = SWIM;
 					animator.playAnimation(&swim_anim);
@@ -372,7 +375,7 @@ int main() {
 				vec3 bullet_pos = player.pos + vec3(0.0, 2.0, 0.0);
 				vec3 velocity = glm::normalize(enemies[0].pos - bullet_pos) * 0.01f * dt_ms;
 				projectiles.push_back({
-					.model = cube,
+					.model = &cube,
 					.velocity = velocity,
 					.pos = bullet_pos,
 					.lifetime = 4.0,
@@ -386,7 +389,9 @@ int main() {
 				auto& p = projectiles[i];
 				p.pos += p.velocity;
 				if (p.lifetime <= 0) {
-					projectiles.pop_back();
+					// swap remove is faster but
+					// c++ stl fucking sucks and doesn't have the api for it
+					projectiles.erase(projectiles.begin() + i);
 				} else {
 					p.lifetime -= dt_ms/1000;
 				}
@@ -403,8 +408,9 @@ int main() {
 				float dist2 = glm::dot(line, line);
 				float radius = 4.0f;
 				if (dist2 < radius*radius) {
-					std::cout << "-1 hp" << std::endl;
-					// enemies.pop_back();
+					// swap remove is faster but
+					// c++ stl fucking sucks and doesn't have the api for it
+					enemies.erase(enemies.begin() + i);
 				}
 			}
 		}
@@ -416,33 +422,33 @@ int main() {
 			const auto& transforms = animator.bone_matrices;
 			glProgramUniformMatrix4fv(model_plain_anim_shader, model_anim_shader_bone_matrices, transforms.size(), false, glm::value_ptr(transforms[0]));
 
-			state.updateModel(player.pos, vec3(1.0f), getAngle(vec2(1.0f, 0.0f), vec2(state.view.front.x, state.view.front.z)));
+			state.updateModel(player.pos, player.scale, getAngle(vec2(1.0f, 0.0f), vec2(state.view.front.x, state.view.front.z)));
 			state.updateViewProj(player.pos);
 			state.uploadModelViewProj(ubo);
-			player.model.draw();
+			player.model->draw();
 
 			for (const auto& p : projectiles) {
 				state.updateModel(p.pos, p.scale, p.angle);
 				state.uploadModel(ubo);
-				p.model.draw();
+				p.model->draw();
 			}
 
 			for (const auto& e : enemies) {
 				state.updateModel(e.pos, e.scale, e.angle);
 				state.uploadModel(ubo);
-				e.model.draw();
+				e.model->draw();
 			}
 
-			state.updateModel(vec3(0.0f, -2.0f, 0.0f), vec3(12.0f, 1.0f, 12.0f), 0);
+			state.updateModel(tower.pos, tower.scale, tower.angle);
+			state.uploadModel(ubo);
+			tower.model->draw();
+
+			state.updateModel(vec3(0.0f, -2.0f, 0.0f), vec3(32.0f, 1.0f, 32.0f), 0);
 			state.uploadModel(ubo);
 			map.draw();
 
-			state.updateModel(tower.pos, vec3(12.0f), tower.angle);
-			state.uploadModel(ubo);
-			tower.model.draw();
-
 			// render cube map
-			mat4 view = getView(vec3(0.0), state.view.front, state.view.up, true);
+			mat4 view = glm::lookAt(vec3(0.0), state.view.front, state.view.up);
 			glNamedBufferSubData(ubo, offsetof(UniformBuffer, view), sizeof(mat4), glm::value_ptr(view));
 			cube_map.draw();
 		}
@@ -604,16 +610,6 @@ void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
 void windowSizeCallback(GLFWwindow* window, int width, int height) {
 	State *state = reinterpret_cast<State*>(glfwGetWindowUserPointer(window));
 	state->scr_res = ivec2(width, height);
-}
-
-mat4 getView(vec3 model_pos, vec3 front, vec3 up, bool cam_zero) {
-	vec3 radius = 2.0f * front;
-	if (!cam_zero) {
-		model_pos.y += 1.3f;
-		return glm::lookAt(model_pos - radius, model_pos, up);
-	} else {
-		return glm::lookAt(vec3(0.0), radius, up);
-	}
 }
 
 float getAngle(vec2 u, vec2 v) {
