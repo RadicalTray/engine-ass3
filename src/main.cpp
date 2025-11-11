@@ -13,6 +13,7 @@
 #include <thread>
 #include <iostream>
 #include <vector>
+#include <random>
 #include <array>
 
 #include <utils.hpp>
@@ -21,6 +22,7 @@
 #include <animator.hpp>
 
 mat4 getView(vec3 model_pos, vec3 front, vec3 up, bool cam_zero);
+float getAngle(vec2 u, vec2 v);
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods);
 void cursorPosCallback(GLFWwindow* window, double xpos, double ypos);
@@ -109,7 +111,7 @@ struct State {
 		glfwGetWindowSize(window, &state.scr_res.x, &state.scr_res.y);
 		glfwGetCursorPos(window, &state.mouse.last_xpos, &state.mouse.last_ypos);
 		state.updateViewProj(vec3(0.0f));
-		state.updateModel(vec3(0.0f), vec3(1.0f), vec2(0.0f));
+		state.updateModel(vec3(0.0f), vec3(1.0f), 0);
 		return state;
 	}
 
@@ -136,18 +138,11 @@ struct State {
 		glNamedBufferSubData(ubo, offsetof(UniformBuffer, view), 2*sizeof(mat4) + sizeof(vec4), &this->ub);
 	}
 
-	void updateModel(vec3 pos, vec3 scale, vec2 front) {
-		const vec3 up = vec3(0.0f, 1.0f, 0.0f);
-
-		// xz
-		vec2 u = vec2(1.0f, 0.0f);
-		vec2 v = front;
-		float angle = std::atan2(u.x*v.x + u.y*v.y, u.x*v.y - u.y*v.x);
-
+	void updateModel(vec3 pos, vec3 scale, float angle) {
 		mat4 model(1.0f);
-		model = glm::scale(model, scale);
 		model = glm::translate(model, pos);
-		model = glm::rotate(model, angle, up);
+		model = glm::scale(model, scale);
+		model = glm::rotate(model, angle, vec3(0.0f, 1.0f, 0.0f));
 
 		this->ub.model = model;
 		this->ub.model_it = glm::transpose(glm::inverse(model));
@@ -158,124 +153,55 @@ struct State {
 	}
 };
 
-struct CubeMap {
-	std::vector<vec3> vertices;
-	std::vector<uint> indices;
-	uint vao;
-	uint vbo;
-	uint ebo;
-	uint shader;
-	uint tex;
+struct Entity {
+	const Model& model;
+	Box hitbox = {};
+	vec3 scale = vec3(1.0);
+	vec3 velocity = vec3(0.0f);
+	vec3 pos = vec3(0.0f);
+	float angle = 0;
+	float lifetime = 0;
 
-	static CubeMap init() {
-		CubeMap cube_map = {};
-
-		glCreateVertexArrays(1, &cube_map.vao);
-		glEnableVertexArrayAttrib(cube_map.vao,  0);
-		glVertexArrayAttribFormat(cube_map.vao,  0, 3, GL_FLOAT, GL_FALSE, 0);
-		glVertexArrayAttribBinding(cube_map.vao, 0, 0);
-
-		cube_map.shader = createShader("./shaders/cube_map.vert", "./shaders/cube_map.frag");
-		glProgramUniform1i(cube_map.shader, 0, 0);
-
-		const char *paths[6] = {
-			"assets/envmap_miramar/miramar_ft.tga",
-			"assets/envmap_miramar/miramar_bk.tga",
-			"assets/envmap_miramar/miramar_up.tga",
-			"assets/envmap_miramar/miramar_dn.tga",
-			"assets/envmap_miramar/miramar_rt.tga",
-			"assets/envmap_miramar/miramar_lf.tga",
-		};
-
-		glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &cube_map.tex);
-		glTextureParameteri(cube_map.tex, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTextureParameteri(cube_map.tex, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTextureParameteri(cube_map.tex, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-		glTextureParameteri(cube_map.tex, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-		glTextureParameteri(cube_map.tex, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-		bool texture_allocated = false;
-
-		stbi_set_flip_vertically_on_load(false);
-		for (int i = 0; i < 6; i++) {
-			int width, height, n_channels;
-			uchar *data = stbi_load(paths[i], &width, &height, &n_channels, 3);
-			if (data) {
-				if (!texture_allocated) {
-					glTextureStorage2D(cube_map.tex, 1, GL_RGB8, width, height);
-					texture_allocated = true;
-				}
-				glTextureSubImage3D(cube_map.tex, 0, 0, 0, i, width, height, 1, GL_RGB, GL_UNSIGNED_BYTE, data);
-			} else {
-				std::cerr << "stbi(error): " << stbi_failure_reason() << " (" << paths[i] << ")" << std::endl;
-			}
-			stbi_image_free(data);
-		}
-
-		uint flags = 0;
-		flags |= aiProcess_Triangulate;
-
-		const char *path = "assets/cube.obj";
-		std::cerr << "assimp(info): loading " << path << std::endl;
-		Assimp::Importer imp;
-		const aiScene *scene = imp.ReadFile(path, flags);
-		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-			std::cerr << "assimp(error): " << imp.GetErrorString() << std::endl;
-			return {}; // TODO: handle error
-		}
-		cube_map.processNode(scene->mRootNode, scene);
-
-		glCreateBuffers(2, &cube_map.vbo);
-		glNamedBufferData(cube_map.vbo, cube_map.vertices.size() * sizeof(vec3), cube_map.vertices.data(), GL_STATIC_DRAW);
-		glNamedBufferData(cube_map.ebo, cube_map.indices.size() * sizeof(uint), cube_map.indices.data(), GL_STATIC_DRAW);
-
-		return cube_map;
+	Box getBox(vec3 pos) const {
+		return this->hitbox.translate(pos - this->hitbox.max/2.0f);
 	}
 
-	void processNode(aiNode* node, const aiScene* scene) {
-		for (uint i = 0; i < node->mNumMeshes; i++) {
-			aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
+	bool collide(const vec3& new_pos, const Entity& obj) const {
+		Box new_box = this->getBox(new_pos);
+		Box obj_box = obj.getBox(obj.pos);
 
-			this->vertices.reserve(this->vertices.size() + mesh->mNumVertices);
-			for (uint i = 0; i < mesh->mNumVertices; i++) {
-				this->vertices.push_back(vec3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z));
-			}
+		bool collision = true;
+		// Taken from raylib
+		if ((new_box.max.x >= obj_box.min.x) && (new_box.min.x <= obj_box.max.x)) {
+			if ((new_box.max.y < obj_box.min.y) || (new_box.min.y > obj_box.max.y)) collision = false;
+			if ((new_box.max.z < obj_box.min.z) || (new_box.min.z > obj_box.max.z)) collision = false;
+		} else {
+			collision = false;
+		}
+		return collision;
 
-			this->indices.reserve(this->indices.size() + mesh->mNumFaces * 3);
-			for (uint i = 0; i < mesh->mNumFaces; i++) {
-				aiFace face = mesh->mFaces[i];
-				for (uint j = 0; j < face.mNumIndices; j++) {
-					this->indices.push_back(face.mIndices[j]);
+	}
+
+	void snap(vec3& new_pos, const Entity& obj) {
+		vec3 old_pos = this->pos;
+		Box old_box = this->hitbox.translate(old_pos);
+		Box obj_box = obj.getBox(obj.pos);
+
+		vec3 diff = new_pos - old_pos;
+		if (this->collide(new_pos, obj)) {
+			if (diff.y < 0.0f) {
+				// if was on top
+				if (old_box.min.y >= obj_box.max.y) {
+					new_pos.y = obj_box.max.y;
+					this->velocity.y = 0;
 				}
 			}
 		}
-		for (uint i = 0; i < node->mNumChildren; i++) {
-			processNode(node->mChildren[i], scene);
-		}
-	}
-
-	void draw() const {
-		int old_cull_face_mode;
-		glGetIntegerv(GL_CULL_FACE_MODE, &old_cull_face_mode);
-		int old_depth_func;
-		glGetIntegerv(GL_DEPTH_FUNC, &old_depth_func);
-
-		glCullFace(GL_FRONT);
-		glDepthFunc(GL_LEQUAL);
-
-		glUseProgram(this->shader);
-		glBindVertexArray(this->vao);
-
-		// uniform has already been set to texture 0 in init()
-		glBindTextureUnit(0, this->tex);
-
-		glVertexArrayVertexBuffer(this->vao, 0, this->vbo, 0, sizeof(vec3));
-		glVertexArrayElementBuffer(this->vao, this->ebo);
-		glDrawElements(GL_TRIANGLES, static_cast<uint>(this->indices.size()), GL_UNSIGNED_INT, 0);
-
-		glCullFace(old_cull_face_mode);
-		glDepthFunc(old_depth_func);
 	}
 };
+
+// TODO:
+// struct AnimatedEntity {};
 
 const float flr = 0.0f;
 const float gravity = 0.0002f;
@@ -290,6 +216,10 @@ int main() {
 	glfwSetScrollCallback(window, scrollCallback);
 	glfwSetWindowSizeCallback(window, windowSizeCallback);
 	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+	std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_real_distribution<> dis(0.0, 1.0);
 
 	// Initialize buffers
 	std::array<uint, 1> va{};
@@ -317,7 +247,6 @@ int main() {
 
 	// Model model = Model::init("./vampire/dancing_vampire.dae", false);
 	Model model = Model::init("./assets/Dancing Twerk.dae", vao, model_plain_anim_shader);
-	model.hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) };
 
 	// auto dance_anim = Animation::init("./vampire/dancing_vampire.dae", model.bone_info_map);
 	auto dance_anim = Animation::init("./assets/Dancing Twerk.dae", model.bone_info_map);
@@ -326,13 +255,28 @@ int main() {
 	auto animator = Animator::init(&dance_anim);
 	assert(animator.bone_matrices.size() <= MAX_BONE_MATRICES);
 
-	Model tower = Model::init("./assets/fantasy_tower/scene.gltf", vao, model_shader);
+	Model tower_model = Model::init("./assets/fantasy_tower/scene.gltf", vao, model_shader);
 	Model map = Model::init("./assets/low_poly_island/scene.gltf", vao, model_shader);
-	// Model cat = Model::init("./assets/cat_low_poly.glb", vao, model_plain_shader);
+	Model cat = Model::init("./assets/mouse/mouse.gltf", vao, model_shader);
+	Model cube = Model::init("./assets/cube.obj", vao, model_plain_shader);
 
-	// TODO: store a ptr/handle to Model instead of having multiple copies
-	//  Potential solution: DrawContext{ vao, shader, drawfn }
-	std::vector<Model> objs;
+	std::vector<Entity> enemies;
+	enemies.push_back({ .model = cat, .hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) } });
+
+	Entity player = {
+		.model = model,
+		.hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) },
+	};
+
+	Entity tower = {
+		.model = tower_model,
+		.hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) },
+		.pos = vec3(10.0f, 12.0f, 10.0f),
+		.angle = 200.0/180.0 * M_PI,
+	};
+
+	std::vector<Entity> projectiles;
+	std::vector<Entity> player_towers;
 
 	CubeMap cube_map = CubeMap::init();
 
@@ -342,57 +286,58 @@ int main() {
 	glEnable(GL_CULL_FACE);
 	// glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
 
+	float timer = 1.0f;
 	auto start = chrono::steady_clock::now();
 	while (!glfwWindowShouldClose(window)) {
 		auto now = chrono::steady_clock::now();
 		state.dt = chrono::duration_cast<chrono::microseconds>(now - start).count();
 		start = now;
 
+		if (timer < 0.0f) {
+			vec3 pos = vec3(dis(gen) * 80.0, 0.0, dis(gen) * 80.0);
+			enemies.push_back({ .model = cat, .hitbox = { .min = vec3(0.0f), .max = vec3(0.4f) }, .scale = vec3(dis(gen)*4.0), .pos = pos });
+			timer = 1.0f;
+		} else {
+			timer -= state.dt / 1'000'000.0f;
+		}
+
 		{ // process
 			glfwPollEvents();
 			const float dt_ms = state.dt/1000.0f;
 
-			// Floating cam
-			// if (state.keys.w) state.view.pos += state.view.front * state.view.speed * dt_ms;
-			// if (state.keys.s) state.view.pos -= state.view.front * state.view.speed * dt_ms;
-			// if (state.keys.a) state.view.pos -= glm::normalize(glm::cross(state.view.front, state.view.up)) * state.view.speed * dt_ms;
-			// if (state.keys.d) state.view.pos += glm::normalize(glm::cross(state.view.front, state.view.up)) * state.view.speed * dt_ms;
-			// if (state.keys.space) state.view.pos += state.view.up * state.view.speed * dt_ms;
-			// if (state.keys.shift) state.view.pos -= state.view.up * state.view.speed * dt_ms;
+			player.velocity.x = 0;
+			player.velocity.y -= gravity * dt_ms;
+			player.velocity.z = 0;
 
-			vec3 move_front = state.view.front * state.view.speed * dt_ms;
-			move_front.y = 0.0f;
-			vec3 move_side = glm::normalize(glm::cross(state.view.front, state.view.up)) * state.view.speed * dt_ms;
-			vec3 move_vert = state.view.up * 0.01f;
+			vec3 forward = state.view.front;
+			forward.y = 0.0f;
+			vec3 right = glm::normalize(glm::cross(state.view.front, state.view.up));
+			vec3 dir = vec3(0);
+			if (state.keys.w) dir += forward;
+			if (state.keys.s) dir -= forward;
+			if (state.keys.a) dir -= right;
+			if (state.keys.d) dir += right;
 
-			model.velocity.x = 0;
-			model.velocity.y -= gravity * dt_ms;
-			model.velocity.z = 0;
+			vec3 vel = dir*state.view.speed*dt_ms;
+			player.velocity.x = vel.x;
+			if (state.keys.space) player.velocity.y += 1.35f*gravity*dt_ms;
+			player.velocity.z = vel.z;
 
-			if (state.keys.w)     model.velocity   += move_front;
-			if (state.keys.s)     model.velocity   -= move_front;
-			if (state.keys.a)     model.velocity   -= move_side;
-			if (state.keys.d)     model.velocity   += move_side;
-			if (state.keys.space) model.velocity.y += 1.35f*gravity*dt_ms;
-			// if (state.keys.shift) model.velocity -= move_vert;
+			vec3 new_pos = player.pos + player.velocity;
 
-			vec3 new_pos = model.pos + model.velocity;
-
-			// TODO:
-			// "physics"
+			// player collisions
 			if (new_pos.y < flr) {
 				new_pos.y = flr;
-				model.velocity.y = 0.0f;
+				player.velocity.y = 0.0f;
 			}
 
-			for (usize i = 0; i < objs.size(); i++) {
-				model.detectObj(new_pos, objs[i]);
+			for (usize i = 0; i < enemies.size(); i++) {
 			}
-			model.pos = new_pos;
+			player.pos = new_pos;
 
 			switch (state.player_state) {
 			case IDLE:
-				if (model.velocity.x != 0) {
+				if (player.velocity.x != 0) {
 					if (new_pos.y == flr) {
 						state.player_state = WALK;
 						animator.playAnimation(&walk_anim);
@@ -403,26 +348,65 @@ int main() {
 				}
 				break;
 			case SWIM:
-				if (model.velocity.x == 0) {
+				if (player.velocity.x == 0) {
 					state.player_state = IDLE;
 					animator.playAnimation(&dance_anim);
-				} else if (model.pos.y == flr) {
+				} else if (player.pos.y == flr) {
 					state.player_state = WALK;
 					animator.playAnimation(&walk_anim);
 				}
 				break;
 			case WALK:
-				if (model.velocity.x == 0) {
+				if (player.velocity.x == 0) {
 					state.player_state = IDLE;
 					animator.playAnimation(&dance_anim);
-				} else if (model.pos.y > flr) {
+				} else if (player.pos.y > flr) {
 					state.player_state = SWIM;
 					animator.playAnimation(&swim_anim);
 				}
 				break;
 			}
-
 			animator.updateAnimation(state.dt/1000000.0f);
+
+			if (state.keys.left_click) {
+				vec3 bullet_pos = player.pos + vec3(0.0, 2.0, 0.0);
+				vec3 velocity = glm::normalize(enemies[0].pos - bullet_pos) * 0.01f * dt_ms;
+				projectiles.push_back({
+					.model = cube,
+					.velocity = velocity,
+					.pos = bullet_pos,
+					.lifetime = 4.0,
+				});
+				state.keys.left_click = false;
+			}
+			if (state.keys.right_click) {
+			}
+
+			for (int i = projectiles.size() - 1; i >= 0; i--) {
+				auto& p = projectiles[i];
+				p.pos += p.velocity;
+				if (p.lifetime <= 0) {
+					projectiles.pop_back();
+				} else {
+					p.lifetime -= dt_ms/1000;
+				}
+			}
+
+			for (int i = enemies.size() - 1; i >= 0; i--) {
+				auto& e = enemies[i];
+				auto line = tower.pos - e.pos;
+				line.y = 0.0;
+				auto dir = glm::normalize(line);
+				e.angle = getAngle(vec2(1.0, 0.0), vec2(dir.x, dir.z));
+				e.pos += dir * 0.004f * dt_ms;
+
+				float dist2 = glm::dot(line, line);
+				float radius = 4.0f;
+				if (dist2 < radius*radius) {
+					std::cout << "-1 hp" << std::endl;
+					// enemies.pop_back();
+				}
+			}
 		}
 		{ // render
 			glClearColor(0.0f, 0.0f, 0.0f, 1.00f);
@@ -432,23 +416,30 @@ int main() {
 			const auto& transforms = animator.bone_matrices;
 			glProgramUniformMatrix4fv(model_plain_anim_shader, model_anim_shader_bone_matrices, transforms.size(), false, glm::value_ptr(transforms[0]));
 
-			state.updateModel(model.pos, vec3(1.0f), vec2(state.view.front.x, state.view.front.z));
-			state.updateViewProj(model.pos);
+			state.updateModel(player.pos, vec3(1.0f), getAngle(vec2(1.0f, 0.0f), vec2(state.view.front.x, state.view.front.z)));
+			state.updateViewProj(player.pos);
 			state.uploadModelViewProj(ubo);
-			model.draw();
+			player.model.draw();
 
-			// render objects
-			for (auto o : objs) {
-				state.updateModel(o.pos, vec3(1.0f), vec2(0.0f));
+			for (const auto& p : projectiles) {
+				state.updateModel(p.pos, p.scale, p.angle);
 				state.uploadModel(ubo);
-				o.draw();
+				p.model.draw();
 			}
-			state.updateModel(vec3(0.0f, -2.0f, 0.0f), vec3(4.0f, 1.0f, 4.0f), vec2(0.0f));
+
+			for (const auto& e : enemies) {
+				state.updateModel(e.pos, e.scale, e.angle);
+				state.uploadModel(ubo);
+				e.model.draw();
+			}
+
+			state.updateModel(vec3(0.0f, -2.0f, 0.0f), vec3(12.0f, 1.0f, 12.0f), 0);
 			state.uploadModel(ubo);
 			map.draw();
-			state.updateModel(vec3(0.0f, 1.0f, 0.0f), vec3(10.0f), vec2(0.0f));
+
+			state.updateModel(tower.pos, vec3(12.0f), tower.angle);
 			state.uploadModel(ubo);
-			tower.draw();
+			tower.model.draw();
 
 			// render cube map
 			mat4 view = getView(vec3(0.0), state.view.front, state.view.up, true);
@@ -623,4 +614,8 @@ mat4 getView(vec3 model_pos, vec3 front, vec3 up, bool cam_zero) {
 	} else {
 		return glm::lookAt(vec3(0.0), radius, up);
 	}
+}
+
+float getAngle(vec2 u, vec2 v) {
+	return std::atan2(u.x*v.x + u.y*v.y, u.x*v.y - u.y*v.x);
 }

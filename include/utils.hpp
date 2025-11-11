@@ -10,6 +10,9 @@
 #include <sstream>
 #include <string>
 
+#include <assimp/scene.h>
+#include <assimp/Importer.hpp>
+#include <assimp/postprocess.h>
 #include <assimp/matrix4x4.h>
 #include <assimp/quaternion.h>
 #include <assimp/vector2.h>
@@ -27,7 +30,7 @@ GLFWwindow* init() {
 
 	GLFWwindow* window = glfwCreateWindow(1600, 900, "uwu", NULL, NULL);
 	if (window == NULL) {
-		std::cout << "Failed to create GLFW window" << std::endl;
+		std::cerr << "Failed to create GLFW window" << std::endl;
 		glfwTerminate();
 		exit(-1);
 	}
@@ -36,10 +39,10 @@ GLFWwindow* init() {
 
 	int version = gladLoadGL(glfwGetProcAddress);
 	if (version == 0) {
-		std::cout << "Failed to initialize GLAD" << std::endl;
+		std::cerr << "Failed to initialize GLAD" << std::endl;
 		exit(-1);
 	}
-	std::cout << "GL " << GLAD_VERSION_MAJOR(version) << "." << GLAD_VERSION_MINOR(version) << std::endl;
+	std::cerr << "GL " << GLAD_VERSION_MAJOR(version) << "." << GLAD_VERSION_MINOR(version) << std::endl;
 
 	// first window doesn't trigger framebufferSizeCallback
 	// or has the wrong viewport for some reason
@@ -241,3 +244,122 @@ glm::vec4 glmFromAssimpVec4(const aiColor4D& src) {
 glm::quat glmFromAssimpQuat(const aiQuaternion& src) {
 	return glm::quat(src.w, src.x, src.y, src.z);
 }
+
+struct CubeMap {
+	std::vector<vec3> vertices;
+	std::vector<uint> indices;
+	uint vao;
+	uint vbo;
+	uint ebo;
+	uint shader;
+	uint tex;
+
+	static CubeMap init() {
+		CubeMap cube_map = {};
+
+		glCreateVertexArrays(1, &cube_map.vao);
+		glEnableVertexArrayAttrib(cube_map.vao,  0);
+		glVertexArrayAttribFormat(cube_map.vao,  0, 3, GL_FLOAT, GL_FALSE, 0);
+		glVertexArrayAttribBinding(cube_map.vao, 0, 0);
+
+		cube_map.shader = createShader("./shaders/cube_map.vert", "./shaders/cube_map.frag");
+		glProgramUniform1i(cube_map.shader, 0, 0);
+
+		const char *paths[6] = {
+			"assets/envmap_miramar/miramar_ft.tga",
+			"assets/envmap_miramar/miramar_bk.tga",
+			"assets/envmap_miramar/miramar_up.tga",
+			"assets/envmap_miramar/miramar_dn.tga",
+			"assets/envmap_miramar/miramar_rt.tga",
+			"assets/envmap_miramar/miramar_lf.tga",
+		};
+
+		glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &cube_map.tex);
+		glTextureParameteri(cube_map.tex, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTextureParameteri(cube_map.tex, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTextureParameteri(cube_map.tex, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+		glTextureParameteri(cube_map.tex, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTextureParameteri(cube_map.tex, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		bool texture_allocated = false;
+
+		stbi_set_flip_vertically_on_load(false);
+		for (int i = 0; i < 6; i++) {
+			int width, height, n_channels;
+			uchar *data = stbi_load(paths[i], &width, &height, &n_channels, 3);
+			if (data) {
+				if (!texture_allocated) {
+					glTextureStorage2D(cube_map.tex, 1, GL_RGB8, width, height);
+					texture_allocated = true;
+				}
+				glTextureSubImage3D(cube_map.tex, 0, 0, 0, i, width, height, 1, GL_RGB, GL_UNSIGNED_BYTE, data);
+			} else {
+				std::cerr << "stbi(error): " << stbi_failure_reason() << " (" << paths[i] << ")" << std::endl;
+			}
+			stbi_image_free(data);
+		}
+
+		uint flags = 0;
+		flags |= aiProcess_Triangulate;
+
+		const char *path = "assets/cube.obj";
+		std::cerr << "assimp(info): loading " << path << std::endl;
+		Assimp::Importer imp;
+		const aiScene *scene = imp.ReadFile(path, flags);
+		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+			std::cerr << "assimp(error): " << imp.GetErrorString() << std::endl;
+			return {}; // TODO: handle error
+		}
+		cube_map.processNode(scene->mRootNode, scene);
+
+		glCreateBuffers(2, &cube_map.vbo);
+		glNamedBufferData(cube_map.vbo, cube_map.vertices.size() * sizeof(vec3), cube_map.vertices.data(), GL_STATIC_DRAW);
+		glNamedBufferData(cube_map.ebo, cube_map.indices.size() * sizeof(uint), cube_map.indices.data(), GL_STATIC_DRAW);
+
+		return cube_map;
+	}
+
+	void processNode(aiNode* node, const aiScene* scene) {
+		for (uint i = 0; i < node->mNumMeshes; i++) {
+			aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
+
+			this->vertices.reserve(this->vertices.size() + mesh->mNumVertices);
+			for (uint i = 0; i < mesh->mNumVertices; i++) {
+				this->vertices.push_back(vec3(mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z));
+			}
+
+			this->indices.reserve(this->indices.size() + mesh->mNumFaces * 3);
+			for (uint i = 0; i < mesh->mNumFaces; i++) {
+				aiFace face = mesh->mFaces[i];
+				for (uint j = 0; j < face.mNumIndices; j++) {
+					this->indices.push_back(face.mIndices[j]);
+				}
+			}
+		}
+		for (uint i = 0; i < node->mNumChildren; i++) {
+			processNode(node->mChildren[i], scene);
+		}
+	}
+
+	void draw() const {
+		int old_cull_face_mode;
+		glGetIntegerv(GL_CULL_FACE_MODE, &old_cull_face_mode);
+		int old_depth_func;
+		glGetIntegerv(GL_DEPTH_FUNC, &old_depth_func);
+
+		glCullFace(GL_FRONT);
+		glDepthFunc(GL_LEQUAL);
+
+		glUseProgram(this->shader);
+		glBindVertexArray(this->vao);
+
+		// uniform has already been set to texture 0 in init()
+		glBindTextureUnit(0, this->tex);
+
+		glVertexArrayVertexBuffer(this->vao, 0, this->vbo, 0, sizeof(vec3));
+		glVertexArrayElementBuffer(this->vao, this->ebo);
+		glDrawElements(GL_TRIANGLES, static_cast<uint>(this->indices.size()), GL_UNSIGNED_INT, 0);
+
+		glCullFace(old_cull_face_mode);
+		glDepthFunc(old_depth_func);
+	}
+};

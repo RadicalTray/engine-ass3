@@ -25,9 +25,6 @@ struct Box {
 struct Model {
 	std::vector<TextureInfo> textures_loaded;
 	std::vector<Mesh> meshes;
-	vec3 velocity;
-	vec3 pos;
-	Box hitbox;
 	std::map<std::string, BoneInfo> bone_info_map;
 	uint vao;
 	uint shader;
@@ -71,35 +68,5 @@ struct Model {
 		for (auto m : this->meshes) {
 			m.draw(this->vao, this->shader);
 		}
-	}
-
-	bool detectObj(vec3& new_pos, Model obj) {
-		bool collision = true;
-
-		Box new_box = this->hitbox.translate(new_pos);
-		Box obj_box = obj.hitbox.translate(obj.pos);
-
-		// Taken from raylib
-		if ((new_box.max.x >= obj_box.min.x) && (new_box.min.x <= obj_box.max.x)) {
-			if ((new_box.max.y < obj_box.min.y) || (new_box.min.y > obj_box.max.y)) collision = false;
-			if ((new_box.max.z < obj_box.min.z) || (new_box.min.z > obj_box.max.z)) collision = false;
-		} else {
-			collision = false;
-		}
-
-		vec3 old_pos = this->pos;
-		Box old_box = this->hitbox.translate(old_pos);
-		vec3 diff = new_pos - old_pos;
-		if (collision) {
-			if (diff.y < 0.0f) {
-				// if was on top
-				if (old_box.min.y >= obj_box.max.y) {
-					new_pos.y = obj_box.max.y;
-					this->velocity.y = 0;
-				}
-			}
-		}
-
-		return collision;
 	}
 };
